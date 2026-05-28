@@ -14,7 +14,6 @@ It is not an EDR, SOAR, firewall controller, remediation tool, or cross-host pla
 
 Open Investigator is maintained by **Arvanta Cyber Inc**.
 
-- Project lead: **Qimin Zhao**
 - Project feedback: [oi@arvantacyber.com](mailto:oi@arvantacyber.com)
 - Website: [arvantacyber.com/open-investigator](https://www.arvantacyber.com/open-investigator)
 - Source: [github.com/SEc-123/open-investigator](https://github.com/SEc-123/open-investigator)
