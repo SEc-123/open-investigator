@@ -91,5 +91,5 @@ jobs:
           TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Open Investigator $TAG" --notes "Open-source AI-driven server investigator release $TAG."
-          gh release upload "$TAG" dist/* --clobber
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Open Investigator $TAG" --notes "Open-source AI-driven server investigator release $TAG."
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
