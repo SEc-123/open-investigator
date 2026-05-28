@@ -3153,7 +3153,7 @@ fn authorized_key_type(line: &str) -> Option<&'static str> {
 
 fn authorized_key_has_options(line: &str) -> bool {
     let first = line.split_whitespace().next().unwrap_or("");
-    !matches!(authorized_key_type(first), Some(_))
+    authorized_key_type(first).is_none()
 }
 
 fn authorized_key_option_present(line: &str, option: &str) -> bool {
@@ -3169,9 +3169,9 @@ fn file_mode_octal(path: &Path) -> String {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        return fs::metadata(path)
+        fs::metadata(path)
             .map(|meta| format!("{:04o}", meta.permissions().mode() & 0o7777))
-            .unwrap_or_else(|_| "unknown".to_string());
+            .unwrap_or_else(|_| "unknown".to_string())
     }
     #[cfg(not(unix))]
     {
