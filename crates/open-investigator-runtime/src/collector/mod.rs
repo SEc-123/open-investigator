@@ -463,12 +463,17 @@ pub fn snapshot_network(
 ) -> Result<()> {
     let cmd = if cfg!(windows) {
         "Get-NetTCPConnection | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess"
+    } else if cfg!(target_os = "macos") && command_exists("lsof") {
+        "lsof -nP -iTCP -sTCP:LISTEN"
+    } else if cfg!(target_os = "macos") {
+        "netstat -anv -p tcp"
     } else if command_exists("ss") {
         "ss -antup"
     } else {
         "netstat -antup"
     };
     let out = runner.run_builtin(store, cmd, "network snapshot")?;
+    record_command_diagnostic(store, "network", "net.snap diagnostic", &out)?;
     let mut interesting = Vec::new();
     for line in out.stdout.lines() {
         if ip.map(|value| line.contains(value)).unwrap_or(false) {
@@ -482,6 +487,7 @@ pub fn snapshot_network(
         }
     }
     let ioc_hit = ip.map(|value| out.stdout.contains(value)).unwrap_or(false);
+    let risky_listeners = risky_network_listeners(&out.stdout);
     store.add(EvidenceDraft {
         event_time: None,
         category: "network".to_string(),
@@ -509,6 +515,31 @@ pub fn snapshot_network(
         },
         confidence: Confidence::Medium,
     })?;
+    if !risky_listeners.is_empty() {
+        let severity = risky_listeners
+            .iter()
+            .map(|finding| finding.severity)
+            .max()
+            .unwrap_or(Severity::Info);
+        let tags = merge_network_tags(&risky_listeners);
+        let raw = risky_listeners
+            .iter()
+            .map(|finding| finding.line.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let summary = summarize_network_findings(&risky_listeners);
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "network".to_string(),
+            source: "net.snap risk".to_string(),
+            title: "可疑监听/调试端口".to_string(),
+            summary,
+            raw_excerpt: Some(truncate_text(&raw, 14_000)),
+            tags,
+            severity,
+            confidence: Confidence::High,
+        })?;
+    }
     Ok(())
 }
 
@@ -1449,77 +1480,33 @@ pub fn analyze_packages(store: &mut EvidenceStore, runner: &mut CommandRunner) -
     if cfg!(windows) {
         let cmd = "Get-ItemProperty HKLM:/Software/Microsoft/Windows/CurrentVersion/Uninstall/* | Select-Object DisplayName,DisplayVersion,Publisher,InstallDate";
         let out = runner.run_builtin(store, cmd, "Windows installed programs")?;
-        store.add(EvidenceDraft {
-            event_time: None,
-            category: "package".to_string(),
-            source: cmd.to_string(),
-            title: "Windows 安装程序枚举".to_string(),
-            summary: "收集安装程序列表，用于发现异常新装软件或远控工具".to_string(),
-            raw_excerpt: Some(truncate_text(&out.stdout, 12_000)),
-            tags: vec!["package_check".to_string()],
-            severity: Severity::Info,
-            confidence: Confidence::Medium,
-        })?;
-    } else if command_exists("dpkg") {
-        let out = runner.run_builtin(store, "dpkg -l", "Debian package list")?;
-        let sus = suspicious_lines(
-            &out.stdout,
-            &[
-                "netcat", "ncat", "socat", "nmap", "masscan", "miner", "xmrig",
-            ],
-            80,
-        );
-        store.add(EvidenceDraft {
-            event_time: None,
-            category: "package".to_string(),
-            source: "dpkg -l".to_string(),
-            title: "Debian/Ubuntu 包列表".to_string(),
-            summary: format!("收集包列表；可疑工具命中 {} 条", sus.len()),
-            raw_excerpt: Some(truncate_text(
-                &if sus.is_empty() {
-                    out.stdout
-                } else {
-                    sus.join("\n")
-                },
-                12_000,
-            )),
-            tags: vec!["package_check".to_string()],
-            severity: if sus.is_empty() {
-                Severity::Info
-            } else {
-                Severity::Low
-            },
-            confidence: Confidence::Medium,
-        })?;
+        record_package_diagnostic(store, &out)?;
+        let records = parse_package_records(&out.stdout);
+        record_package_inventory(store, cmd, &records, out.truncated)?;
+        record_suspicious_packages(store, cmd, &records)?;
+    } else if command_exists("dpkg-query") || command_exists("dpkg") {
+        let result = run_dpkg_package_query(store, runner)?;
+        let records = parse_package_records(&result.output.stdout);
+        record_package_inventory(store, result.source, &records, result.output.truncated)?;
+        record_suspicious_packages(store, result.source, &records)?;
     } else if command_exists("rpm") {
-        let out = runner.run_builtin(store, "rpm -qa", "RPM package list")?;
-        let sus = suspicious_lines(
-            &out.stdout,
-            &[
-                "netcat", "ncat", "socat", "nmap", "masscan", "miner", "xmrig",
-            ],
-            80,
-        );
+        let result = run_rpm_package_query(store, runner)?;
+        let records = parse_package_records(&result.output.stdout);
+        record_package_inventory(store, result.source, &records, result.output.truncated)?;
+        record_suspicious_packages(store, result.source, &records)?;
+    } else {
         store.add(EvidenceDraft {
             event_time: None,
             category: "package".to_string(),
-            source: "rpm -qa".to_string(),
-            title: "RPM 包列表".to_string(),
-            summary: format!("收集包列表；可疑工具命中 {} 条", sus.len()),
-            raw_excerpt: Some(truncate_text(
-                &if sus.is_empty() {
-                    out.stdout
-                } else {
-                    sus.join("\n")
-                },
-                12_000,
-            )),
-            tags: vec!["package_check".to_string()],
-            severity: if sus.is_empty() {
-                Severity::Info
-            } else {
-                Severity::Low
-            },
+            source: "pkg.check".to_string(),
+            title: "包管理器检查".to_string(),
+            summary: "未发现支持的包管理器（dpkg-query/dpkg/rpm），跳过包资产枚举".to_string(),
+            raw_excerpt: None,
+            tags: vec![
+                "package_check".to_string(),
+                "package_diagnostic".to_string(),
+            ],
+            severity: Severity::Info,
             confidence: Confidence::Medium,
         })?;
     }
@@ -1738,6 +1725,626 @@ fn suspicious_lines(raw: &str, needles: &[&str], limit: usize) -> Vec<String> {
     out
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NetworkEndpoint {
+    state: String,
+    local_addr: String,
+    local_port: u16,
+    line: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NetworkRiskFinding {
+    port: u16,
+    label: &'static str,
+    severity: Severity,
+    tags: Vec<String>,
+    line: String,
+}
+
+fn risky_network_listeners(raw: &str) -> Vec<NetworkRiskFinding> {
+    raw.lines()
+        .filter_map(parse_network_endpoint)
+        .filter(|endpoint| endpoint.state.contains("LISTEN"))
+        .filter_map(|endpoint| classify_network_endpoint(&endpoint))
+        .collect()
+}
+
+fn parse_network_endpoint(line: &str) -> Option<NetworkEndpoint> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(endpoint) = parse_windows_network_endpoint(trimmed) {
+        return Some(endpoint);
+    }
+    parse_unix_network_endpoint(trimmed)
+}
+
+fn parse_unix_network_endpoint(line: &str) -> Option<NetworkEndpoint> {
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    let state_idx = parts.iter().position(|part| {
+        matches!(
+            normalize_network_state(part).as_str(),
+            "LISTEN" | "ESTAB" | "ESTABLISHED"
+        )
+    })?;
+    let state = parts.get(state_idx)?.to_ascii_uppercase();
+    let endpoint = parts
+        .iter()
+        .skip(state_idx + 1)
+        .find_map(|part| parse_endpoint(part))
+        .or_else(|| {
+            parts
+                .iter()
+                .take(state_idx)
+                .rev()
+                .find_map(|part| parse_endpoint(part))
+        })?;
+    Some(NetworkEndpoint {
+        state,
+        local_addr: endpoint.0,
+        local_port: endpoint.1,
+        line: line.to_string(),
+    })
+}
+
+fn normalize_network_state(value: &str) -> String {
+    value.trim_matches(['(', ')']).to_ascii_uppercase()
+}
+
+fn parse_windows_network_endpoint(line: &str) -> Option<NetworkEndpoint> {
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    let state_idx = parts
+        .iter()
+        .position(|part| matches!(part.to_ascii_uppercase().as_str(), "LISTEN" | "LISTENING"))?;
+    if state_idx < 2 {
+        return None;
+    }
+    let port = parts.get(state_idx - 1)?.parse::<u16>().ok()?;
+    let addr = parts.get(state_idx - 2)?.to_string();
+    Some(NetworkEndpoint {
+        state: "LISTEN".to_string(),
+        local_addr: addr,
+        local_port: port,
+        line: line.to_string(),
+    })
+}
+
+fn parse_endpoint(value: &str) -> Option<(String, u16)> {
+    let trimmed = value
+        .trim_matches(['"', '\'', '[', ']'])
+        .trim_start_matches("TCP")
+        .trim()
+        .trim_end_matches(',')
+        .trim();
+    if trimmed.is_empty() || !trimmed.contains(':') {
+        return parse_dot_endpoint(trimmed);
+    }
+    let (addr, port_text) = trimmed.rsplit_once(':')?;
+    let port = port_text.trim_matches('*').parse::<u16>().ok()?;
+    let addr = addr
+        .trim_matches(['[', ']'])
+        .trim_start_matches("::ffff:")
+        .to_string();
+    Some((addr, port))
+}
+
+fn parse_dot_endpoint(value: &str) -> Option<(String, u16)> {
+    let (addr, port_text) = value.rsplit_once('.')?;
+    let port = port_text.parse::<u16>().ok()?;
+    let looks_ipv4 = addr.chars().filter(|ch| *ch == '.').count() == 3;
+    let wildcard = addr == "*";
+    if !looks_ipv4 && !wildcard {
+        return None;
+    }
+    Some((addr.to_string(), port))
+}
+
+fn classify_network_endpoint(endpoint: &NetworkEndpoint) -> Option<NetworkRiskFinding> {
+    let profile = risk_port_profile(endpoint.local_port)?;
+    let exposed = is_exposed_address(&endpoint.local_addr);
+    let severity = if exposed {
+        profile.exposed_severity
+    } else {
+        profile.loopback_severity
+    };
+    let mut tags = vec!["network_suspicious_listener".to_string()];
+    tags.extend(profile.tags.iter().map(|tag| tag.to_string()));
+    if exposed {
+        tags.push("network_exposed_listener".to_string());
+    } else {
+        tags.push("network_loopback_listener".to_string());
+    }
+    Some(NetworkRiskFinding {
+        port: endpoint.local_port,
+        label: profile.label,
+        severity,
+        tags,
+        line: endpoint.line.clone(),
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RiskPortProfile {
+    port: u16,
+    label: &'static str,
+    tags: &'static [&'static str],
+    exposed_severity: Severity,
+    loopback_severity: Severity,
+}
+
+fn risk_port_profile(port: u16) -> Option<RiskPortProfile> {
+    risk_port_profiles()
+        .iter()
+        .find(|profile| profile.port == port)
+        .copied()
+}
+
+fn risk_port_profiles() -> &'static [RiskPortProfile] {
+    &[
+        RiskPortProfile {
+            port: 5005,
+            label: "JDWP 调试端口",
+            tags: &["jdwp_exposed", "debug_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::Medium,
+        },
+        RiskPortProfile {
+            port: 4444,
+            label: "常见后门/反连端口",
+            tags: &["backdoor_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::High,
+        },
+        RiskPortProfile {
+            port: 5555,
+            label: "常见后门/调试端口",
+            tags: &["backdoor_port", "debug_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::Medium,
+        },
+        RiskPortProfile {
+            port: 31337,
+            label: "常见后门端口",
+            tags: &["backdoor_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::High,
+        },
+        RiskPortProfile {
+            port: 1337,
+            label: "常见后门端口",
+            tags: &["backdoor_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::High,
+        },
+        RiskPortProfile {
+            port: 2375,
+            label: "Docker 未加密远程 API",
+            tags: &["admin_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::Medium,
+        },
+        RiskPortProfile {
+            port: 10250,
+            label: "Kubelet API 端口",
+            tags: &["admin_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::Medium,
+        },
+        RiskPortProfile {
+            port: 1099,
+            label: "JMX/RMI 端口",
+            tags: &["admin_port", "debug_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::Medium,
+        },
+        RiskPortProfile {
+            port: 9010,
+            label: "JMX/RMI 端口",
+            tags: &["admin_port", "debug_port"],
+            exposed_severity: Severity::High,
+            loopback_severity: Severity::Medium,
+        },
+    ]
+}
+
+fn is_exposed_address(addr: &str) -> bool {
+    let value = addr.trim().to_ascii_lowercase();
+    !(value.is_empty()
+        || value == "127.0.0.1"
+        || value == "localhost"
+        || value == "::1"
+        || value == "[::1]")
+}
+
+fn merge_network_tags(findings: &[NetworkRiskFinding]) -> Vec<String> {
+    let mut tags = Vec::new();
+    for finding in findings {
+        for tag in &finding.tags {
+            if !tags.contains(tag) {
+                tags.push(tag.clone());
+            }
+        }
+    }
+    tags
+}
+
+fn summarize_network_findings(findings: &[NetworkRiskFinding]) -> String {
+    let high = findings
+        .iter()
+        .filter(|finding| finding.severity >= Severity::High)
+        .count();
+    let labels = findings
+        .iter()
+        .take(8)
+        .map(|finding| format!("{}({})", finding.label, finding.port))
+        .collect::<Vec<_>>()
+        .join("、");
+    format!(
+        "发现 {} 条可疑监听/调试端口，其中 high {} 条；核心端口：{}",
+        findings.len(),
+        high,
+        labels
+    )
+}
+
+#[derive(Debug, Clone)]
+struct PackageQueryResult {
+    source: &'static str,
+    output: ToolRunOutput,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PackageRecord {
+    name: String,
+    version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SuspiciousPackage {
+    record: PackageRecord,
+    tag: &'static str,
+    severity: Severity,
+}
+
+fn run_dpkg_package_query(
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+) -> Result<PackageQueryResult> {
+    if command_exists("dpkg-query") {
+        let cmd = "dpkg-query -W -f='${binary:Package}\\t${Version}\\n'";
+        let out = runner.run_builtin(store, cmd, "Debian package inventory")?;
+        record_package_diagnostic(store, &out)?;
+        if command_succeeded(&out) {
+            return Ok(PackageQueryResult {
+                source: "dpkg-query -W",
+                output: out,
+            });
+        }
+    }
+
+    let fallback = "dpkg --get-selections";
+    let out = runner.run_builtin(store, fallback, "Debian package selection inventory")?;
+    record_package_diagnostic(store, &out)?;
+    if command_succeeded(&out) {
+        return Ok(PackageQueryResult {
+            source: "dpkg --get-selections",
+            output: out,
+        });
+    }
+
+    let targeted = suspicious_package_profiles()
+        .iter()
+        .map(|profile| profile.name)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let cmd = format!("dpkg -s {targeted}");
+    let out = runner.run_builtin(store, &cmd, "Debian suspicious package probes")?;
+    record_package_diagnostic(store, &out)?;
+    Ok(PackageQueryResult {
+        source: "dpkg -s suspicious-tools",
+        output: out,
+    })
+}
+
+fn run_rpm_package_query(
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+) -> Result<PackageQueryResult> {
+    let cmd = "rpm -qa --qf '%{NAME}\\t%{VERSION}-%{RELEASE}\\n'";
+    let out = runner.run_builtin(store, cmd, "RPM package inventory")?;
+    record_package_diagnostic(store, &out)?;
+    if command_succeeded(&out) {
+        return Ok(PackageQueryResult {
+            source: "rpm -qa --qf",
+            output: out,
+        });
+    }
+
+    let fallback = "rpm -qa";
+    let out = runner.run_builtin(store, fallback, "RPM package inventory fallback")?;
+    record_package_diagnostic(store, &out)?;
+    Ok(PackageQueryResult {
+        source: "rpm -qa",
+        output: out,
+    })
+}
+
+fn command_succeeded(out: &ToolRunOutput) -> bool {
+    out.allowed && out.exit_code == Some(0) && !out.stdout.trim().is_empty()
+}
+
+fn parse_package_records(raw: &str) -> Vec<PackageRecord> {
+    let mut out = Vec::new();
+    let mut pending_dpkg_status = false;
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("Desired=") || trimmed.starts_with('|') {
+            continue;
+        }
+        if trimmed.starts_with("Package:") {
+            let name = trimmed.trim_start_matches("Package:").trim();
+            if !name.is_empty() {
+                out.push(PackageRecord {
+                    name: name.to_string(),
+                    version: None,
+                });
+            }
+            continue;
+        }
+        if trimmed.contains(':') && !trimmed.contains('\t') {
+            continue;
+        }
+        if trimmed.starts_with("Status:") {
+            pending_dpkg_status = trimmed.contains("install ok installed");
+            continue;
+        }
+        if trimmed.starts_with("ii ") || pending_dpkg_status {
+            let parts = trimmed.split_whitespace().collect::<Vec<_>>();
+            if parts.len() >= 2 && parts[0] == "ii" {
+                out.push(PackageRecord {
+                    name: parts[1].to_string(),
+                    version: parts.get(2).map(|item| item.to_string()),
+                });
+                pending_dpkg_status = false;
+                continue;
+            }
+        }
+        let parts = trimmed.split_whitespace().collect::<Vec<_>>();
+        if let Some(name) = parts.first() {
+            let clean = name.trim_matches(':');
+            if clean
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '+' | ':'))
+            {
+                out.push(PackageRecord {
+                    name: clean.to_string(),
+                    version: parts.get(1).map(|item| item.to_string()),
+                });
+            }
+        }
+    }
+    dedupe_package_records(out)
+}
+
+fn dedupe_package_records(records: Vec<PackageRecord>) -> Vec<PackageRecord> {
+    let mut out = Vec::new();
+    for record in records {
+        if !out
+            .iter()
+            .any(|item: &PackageRecord| item.name == record.name)
+        {
+            out.push(record);
+        }
+    }
+    out
+}
+
+fn record_package_inventory(
+    store: &mut EvidenceStore,
+    source: &str,
+    records: &[PackageRecord],
+    truncated: bool,
+) -> Result<()> {
+    let sample = records
+        .iter()
+        .take(120)
+        .map(|record| match &record.version {
+            Some(version) => format!("{}\t{}", record.name, version),
+            None => record.name.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    store.add(EvidenceDraft {
+        event_time: None,
+        category: "package".to_string(),
+        source: source.to_string(),
+        title: "包资产摘要".to_string(),
+        summary: format!(
+            "通过 {} 收集包资产；包数量 {}；truncated={}",
+            source,
+            records.len(),
+            truncated
+        ),
+        raw_excerpt: Some(truncate_text(&sample, 12_000)),
+        tags: vec!["package_check".to_string(), "package_inventory".to_string()],
+        severity: Severity::Info,
+        confidence: Confidence::Medium,
+    })?;
+    Ok(())
+}
+
+fn record_suspicious_packages(
+    store: &mut EvidenceStore,
+    source: &str,
+    records: &[PackageRecord],
+) -> Result<()> {
+    let findings = suspicious_packages(records);
+    if findings.is_empty() {
+        return Ok(());
+    }
+    let severity = findings
+        .iter()
+        .map(|finding| finding.severity)
+        .max()
+        .unwrap_or(Severity::Info);
+    let mut tags = vec![
+        "package_check".to_string(),
+        "suspicious_package".to_string(),
+    ];
+    for finding in &findings {
+        let tag = finding.tag.to_string();
+        if !tags.contains(&tag) {
+            tags.push(tag);
+        }
+    }
+    let raw = findings
+        .iter()
+        .map(|finding| match &finding.record.version {
+            Some(version) => format!("{}\t{}", finding.record.name, version),
+            None => finding.record.name.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    store.add(EvidenceDraft {
+        event_time: None,
+        category: "package".to_string(),
+        source: format!("{source} suspicious"),
+        title: "可疑包/工具命中".to_string(),
+        summary: format!("包资产中命中 {} 个安全/攻击/隧道/挖矿工具", findings.len()),
+        raw_excerpt: Some(truncate_text(&raw, 12_000)),
+        tags,
+        severity,
+        confidence: Confidence::Medium,
+    })?;
+    Ok(())
+}
+
+fn suspicious_packages(records: &[PackageRecord]) -> Vec<SuspiciousPackage> {
+    let mut out = Vec::new();
+    for record in records {
+        let normalized = normalize_package_name(&record.name);
+        for profile in suspicious_package_profiles() {
+            if normalized == profile.name || normalized.contains(profile.name) {
+                out.push(SuspiciousPackage {
+                    record: record.clone(),
+                    tag: profile.tag,
+                    severity: profile.severity,
+                });
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn normalize_package_name(name: &str) -> String {
+    name.split(':').next().unwrap_or(name).to_ascii_lowercase()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SuspiciousPackageProfile {
+    name: &'static str,
+    tag: &'static str,
+    severity: Severity,
+}
+
+fn suspicious_package_profiles() -> &'static [SuspiciousPackageProfile] {
+    &[
+        SuspiciousPackageProfile {
+            name: "xmrig",
+            tag: "miner_tool",
+            severity: Severity::High,
+        },
+        SuspiciousPackageProfile {
+            name: "masscan",
+            tag: "scanner_tool",
+            severity: Severity::Medium,
+        },
+        SuspiciousPackageProfile {
+            name: "nmap",
+            tag: "scanner_tool",
+            severity: Severity::Low,
+        },
+        SuspiciousPackageProfile {
+            name: "netcat",
+            tag: "network_tool",
+            severity: Severity::Low,
+        },
+        SuspiciousPackageProfile {
+            name: "netcat-openbsd",
+            tag: "network_tool",
+            severity: Severity::Low,
+        },
+        SuspiciousPackageProfile {
+            name: "netcat-traditional",
+            tag: "network_tool",
+            severity: Severity::Low,
+        },
+        SuspiciousPackageProfile {
+            name: "ncat",
+            tag: "network_tool",
+            severity: Severity::Medium,
+        },
+        SuspiciousPackageProfile {
+            name: "socat",
+            tag: "network_tool",
+            severity: Severity::Medium,
+        },
+        SuspiciousPackageProfile {
+            name: "frp",
+            tag: "tunnel_tool",
+            severity: Severity::Medium,
+        },
+        SuspiciousPackageProfile {
+            name: "chisel",
+            tag: "tunnel_tool",
+            severity: Severity::Medium,
+        },
+        SuspiciousPackageProfile {
+            name: "ligolo",
+            tag: "tunnel_tool",
+            severity: Severity::Medium,
+        },
+        SuspiciousPackageProfile {
+            name: "sshpass",
+            tag: "credential_risk_tool",
+            severity: Severity::Low,
+        },
+    ]
+}
+
+fn record_package_diagnostic(store: &mut EvidenceStore, out: &ToolRunOutput) -> Result<()> {
+    let failed = !out.allowed || out.exit_code.map(|code| code != 0).unwrap_or(true);
+    if !failed && !out.truncated {
+        return Ok(());
+    }
+    let mut detail = format!(
+        "包查询命令 `{}` 诊断：allowed={} exit={:?} truncated={} reason={}",
+        out.command, out.allowed, out.exit_code, out.truncated, out.reason
+    );
+    if !out.stderr.trim().is_empty() {
+        detail.push_str(" stderr=");
+        detail.push_str(out.stderr.trim());
+    }
+    store.add(EvidenceDraft {
+        event_time: None,
+        category: "package".to_string(),
+        source: "pkg.check diagnostic".to_string(),
+        title: "包查询诊断".to_string(),
+        summary: detail.clone(),
+        raw_excerpt: Some(truncate_text(&detail, 8_000)),
+        tags: vec![
+            "package_check".to_string(),
+            "package_diagnostic".to_string(),
+        ],
+        severity: Severity::Low,
+        confidence: Confidence::High,
+    })?;
+    Ok(())
+}
+
 fn java_process_lines(raw: &str) -> Vec<String> {
     raw.lines()
         .filter(|line| is_java_process_line(line))
@@ -1931,7 +2538,11 @@ fn extract_pids_from_java_output(raw: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_jupyter_kernel_noise, read_matching_lines, scan_file_for};
+    use super::{
+        is_jupyter_kernel_noise, parse_package_records, read_matching_lines,
+        risky_network_listeners, scan_file_for, suspicious_packages, PackageRecord,
+    };
+    use crate::model::Severity;
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1989,5 +2600,111 @@ mod tests {
 
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("/usr/bin/java -jar app.jar"));
+    }
+
+    #[test]
+    fn exposed_jdwp_listener_is_high_risk() {
+        let raw = "tcp LISTEN 0 4096 0.0.0.0:5005 0.0.0.0:* users:((\"java\",pid=100,fd=12))";
+
+        let findings = risky_network_listeners(raw);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+        assert!(findings[0].tags.contains(&"jdwp_exposed".to_string()));
+    }
+
+    #[test]
+    fn loopback_jdwp_listener_is_medium_risk() {
+        let raw = "tcp LISTEN 0 4096 127.0.0.1:5005 0.0.0.0:* users:((\"java\",pid=100,fd=12))";
+
+        let findings = risky_network_listeners(raw);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Medium);
+        assert!(findings[0]
+            .tags
+            .contains(&"network_loopback_listener".to_string()));
+    }
+
+    #[test]
+    fn backdoor_listener_is_high_risk() {
+        let raw = "tcp LISTEN 0 128 0.0.0.0:4444 0.0.0.0:* users:((\"sh\",pid=44,fd=3))";
+
+        let findings = risky_network_listeners(raw);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+        assert!(findings[0].tags.contains(&"backdoor_port".to_string()));
+    }
+
+    #[test]
+    fn common_web_and_ssh_listeners_are_not_risk_findings() {
+        let raw = "\
+tcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:*
+tcp LISTEN 0 128 0.0.0.0:80 0.0.0.0:*
+tcp LISTEN 0 128 0.0.0.0:443 0.0.0.0:*";
+
+        assert!(risky_network_listeners(raw).is_empty());
+    }
+
+    #[test]
+    fn parses_lsof_listener_format() {
+        let raw = "nc 95415 user 3u IPv4 0x123 0t0 TCP 127.0.0.1:5005 (LISTEN)";
+
+        let findings = risky_network_listeners(raw);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].port, 5005);
+        assert_eq!(findings[0].severity, Severity::Medium);
+    }
+
+    #[test]
+    fn parses_macos_netstat_dot_endpoint_format() {
+        let raw = "tcp4 0 0 127.0.0.1.4444 *.* LISTEN 0 0 0";
+
+        let findings = risky_network_listeners(raw);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].port, 4444);
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    #[test]
+    fn parses_package_inventory_and_finds_suspicious_tools() {
+        let raw = "\
+openssh-server\t1:9.6p1
+xmrig\t6.21.0
+socat\t1.7.4
+curl\t8.5.0";
+
+        let records = parse_package_records(raw);
+        let findings = suspicious_packages(&records);
+
+        assert_eq!(records.len(), 4);
+        assert_eq!(findings.len(), 2);
+        assert!(findings
+            .iter()
+            .any(|item| item.record.name == "xmrig" && item.severity == Severity::High));
+        assert!(findings
+            .iter()
+            .any(|item| item.record.name == "socat" && item.tag == "network_tool"));
+    }
+
+    #[test]
+    fn parses_dpkg_status_probe_output() {
+        let raw = "\
+Package: nmap
+Status: install ok installed
+Version: 7.94";
+
+        let records = parse_package_records(raw);
+
+        assert_eq!(
+            records,
+            vec![PackageRecord {
+                name: "nmap".to_string(),
+                version: None
+            }]
+        );
     }
 }

@@ -61,6 +61,8 @@ oi_pkg_check
 oi_ro_run          # only in investigator mode
 ```
 
+`oi_net_snap` records network context and raises separate findings for risky listeners such as exposed JDWP `5005`, common backdoor ports, Docker TCP `2375`, kubelet `10250`, and JMX/RMI ports. `oi_pkg_check` uses lightweight package queries with fallbacks and diagnostics instead of depending on a full package-list dump.
+
 The AI cannot call raw OS commands in safe mode. In investigator mode, `oi_ro_run` is still filtered by a read-only command policy and is fully audited.
 
 ## Build

@@ -26,7 +26,7 @@ pub fn tool_specs(include_inv_tools: bool) -> Vec<ToolSpec> {
         ToolSpec { name: "auth.check", args: r#"{"ip":"optional","user":"optional"}"#, description: "Analyze authentication events: failed/successful logins, brute-force hints, privileged logins, account changes.", inv_only: false },
         ToolSpec { name: "acct.snap", args: "{}", description: "Collect local users, privileged groups, sudo/admin context, SSH authorized_keys indicators.", inv_only: false },
         ToolSpec { name: "proc.snap", args: "{}", description: "Collect process snapshot and suspicious command-line tags: web-user shell, temp execution, interpreters, Java agent/JDWP.", inv_only: false },
-        ToolSpec { name: "net.snap", args: r#"{"ip":"optional"}"#, description: "Collect network listeners/connections and correlate a remote IP when provided.", inv_only: false },
+        ToolSpec { name: "net.snap", args: r#"{"ip":"optional"}"#, description: "Collect network listeners/connections, correlate a remote IP, and risk-score exposed debug/admin/backdoor ports such as JDWP 5005 or 4444.", inv_only: false },
         ToolSpec { name: "per.snap", args: "{}", description: "Collect persistence/autostart evidence: cron, systemd, timers, scheduled tasks, services, Run/RunOnce, authorized_keys.", inv_only: false },
         ToolSpec { name: "svc.snap", args: "{}", description: "Collect service/daemon state and suspicious service paths or commands.", inv_only: false },
         ToolSpec { name: "web.check", args: r#"{"ip":"optional","root":"optional web root"}"#, description: "Analyze web logs, WebShell indicators, uploads, suspicious POSTs, web-root recent script/package changes.", inv_only: false },
@@ -37,7 +37,7 @@ pub fn tool_specs(include_inv_tools: bool) -> Vec<ToolSpec> {
         ToolSpec { name: "hist.check", args: "{}", description: "Inspect shell/PowerShell history indicators with simple secret redaction.", inv_only: false },
         ToolSpec { name: "linux.deep", args: "{}", description: "Linux deep read-only checks: auditd, lastb, lsmod, ld.so.preload, SUID, suspicious temp locations.", inv_only: false },
         ToolSpec { name: "windows.deep", args: "{}", description: "Windows deep read-only checks: PowerShell logs, Sysmon, WMI persistence, Defender, Startup.", inv_only: false },
-        ToolSpec { name: "pkg.check", args: "{}", description: "Collect package/program inventory and suspicious admin/offensive tools.", inv_only: false },
+        ToolSpec { name: "pkg.check", args: "{}", description: "Collect lightweight package/program inventory with fallback diagnostics and suspicious admin/offensive/mining/tunnel tool matches.", inv_only: false },
     ];
     if include_inv_tools {
         tools.push(ToolSpec { name: "ro.run", args: r#"{"command":"readonly command"}"#, description: "Investigator-mode fallback for a specific read-only OS command. It must pass policy and is fully audited.", inv_only: true });

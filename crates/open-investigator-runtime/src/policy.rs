@@ -173,8 +173,14 @@ fn validate_command_specific_args(command: &str) -> PolicyDecision {
             return PolicyDecision::deny("dpkg is limited to readonly package queries");
         }
     }
+    if command.starts_with("dpkg-query ") {
+        let allowed = [" -w", " --show", " -f", " --showformat"];
+        if !allowed.iter().any(|item| command.contains(item)) {
+            return PolicyDecision::deny("dpkg-query is limited to readonly package queries");
+        }
+    }
     if command.starts_with("rpm ") {
-        let allowed = [" -qa", " -qi", " -qf", " -V"];
+        let allowed = [" -qa", " -qi", " -qf", " -V", " --qf"];
         if !allowed.iter().any(|item| command.contains(item)) {
             return PolicyDecision::deny("rpm is limited to readonly package queries");
         }
@@ -350,6 +356,7 @@ fn linux_allowed() -> &'static [&'static str] {
         "ausearch",
         "lastb",
         "dpkg",
+        "dpkg-query",
         "rpm",
         "docker",
         "crictl",
@@ -414,5 +421,20 @@ mod tests {
     #[test]
     fn denies_dangerous_pipeline_segment() {
         assert!(!validate_readonly_command("ps aux | rm -rf /tmp/x").allowed);
+    }
+
+    #[test]
+    fn allows_dpkg_query_inventory() {
+        assert!(
+            validate_readonly_command("dpkg-query -W -f='${binary:Package}\\t${Version}\\n'")
+                .allowed
+        );
+    }
+
+    #[test]
+    fn denies_package_modification_commands() {
+        assert!(!validate_readonly_command("apt install nmap").allowed);
+        assert!(!validate_readonly_command("apt remove nmap").allowed);
+        assert!(!validate_readonly_command("dpkg --remove nmap").allowed);
     }
 }

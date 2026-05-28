@@ -151,6 +151,16 @@ oi net
 oi net --ip 1.2.3.4
 ```
 
+`oi net` records current listeners/connections and separately raises evidence for risky exposed listeners such as JDWP `5005`, common backdoor ports like `4444`, Docker TCP `2375`, kubelet `10250`, and JMX/RMI ports.
+
+Package checks use lightweight package-manager queries with fallback diagnostics:
+
+```bash
+oi pkg
+```
+
+They summarize package inventory and highlight suspicious admin, tunnel, scanner, or mining tools without relying on full `dpkg -l` dumps.
+
 ### Controlled read-only shell
 
 ```bash

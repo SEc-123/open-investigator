@@ -10,12 +10,12 @@
 | Auth | Successful/failed login evidence, brute-force patterns, privileged-login clues, account context. |
 | Accounts | Local users, groups, privileged users, authorized keys and admin/sudo indicators. |
 | Processes | Command line, parent/child context where available, temp-dir execution, interpreters, web-user shell, Java agents/JDWP. |
-| Network | Listeners, outbound connections, remote IP matching, process-related context where available. |
+| Network | Listeners, outbound connections, remote IP matching, process-related context, and risky debug/admin/backdoor listener scoring. |
 | Persistence | cron, systemd/timers, services, scheduled tasks, Run/RunOnce, WMI, authorized_keys, profiles, `ld.so.preload`, SUID. |
 | Web | Access/error logs, POST/upload, suspicious keywords, shell paths, recent web-root changes, web process context. |
 | Java | Java processes, JVM options, `-javaagent`, `-agentlib`, JDWP, `jps`, `jcmd`, class/JAR/WAR/JSP changes, memory-shell evidence gaps. |
 | Containers | Docker/CRI/Kubernetes local snapshots if tools exist. |
-| Packages | Linux packages and Windows installed program indicators. |
+| Packages | Lightweight Linux/Windows package inventory, suspicious tool matches, and query fallback diagnostics. |
 | History | Shell and PowerShell history indicators with basic sensitive-value redaction. |
 | Report | Findings, timeline, evidence details, gaps, recommendations. |
 
