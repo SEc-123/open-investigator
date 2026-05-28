@@ -273,6 +273,10 @@ pub struct InvestigationReport {
     pub scope: Vec<String>,
     pub conclusion: String,
     pub risk: Severity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_adjusted_risk: Option<Severity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_risk_rationale: Option<String>,
     pub confidence: Confidence,
     pub findings: Vec<Finding>,
     pub timeline: Vec<TimelineEvent>,

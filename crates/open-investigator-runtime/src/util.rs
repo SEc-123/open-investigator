@@ -5,7 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn now_case_id() -> String {
-    Utc::now().format("case-%Y%m%d-%H%M%S").to_string()
+    let now = Utc::now();
+    format!(
+        "{}-{:09}",
+        now.format("case-%Y%m%d-%H%M%S"),
+        now.timestamp_subsec_nanos()
+    )
 }
 
 pub fn truncate_text(value: &str, max_chars: usize) -> String {

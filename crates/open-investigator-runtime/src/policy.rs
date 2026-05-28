@@ -49,10 +49,8 @@ impl ReadonlyPolicy {
 
 pub fn validate_readonly_command(command: &str) -> PolicyDecision {
     let lower = command.to_ascii_lowercase();
-    for needle in hard_deny_tokens() {
-        if lower.contains(needle) {
-            return PolicyDecision::deny(format!("blocked dangerous token `{needle}`"));
-        }
+    if let Some(token) = blocked_dangerous_token(&lower) {
+        return PolicyDecision::deny(format!("blocked dangerous token `{token}`"));
     }
 
     if contains_write_redirection(&lower) {
@@ -89,8 +87,7 @@ fn first_token(segment: &str) -> &str {
 }
 
 fn is_allowed_first_token(token: &str) -> bool {
-    let token = token.trim_start_matches('/');
-    let token = token.rsplit('/').next().unwrap_or(token);
+    let token = command_name(token);
     linux_allowed().contains(&token) || windows_allowed().contains(&token)
 }
 
@@ -185,31 +182,92 @@ fn validate_command_specific_args(command: &str) -> PolicyDecision {
     PolicyDecision::allow("readonly command accepted by policy")
 }
 
-fn hard_deny_tokens() -> &'static [&'static str] {
+fn blocked_dangerous_token(command: &str) -> Option<&'static str> {
+    if command.contains("$(") {
+        return Some("$(");
+    }
+    if command.contains('`') {
+        return Some("`");
+    }
+    for needle in dangerous_phrases() {
+        if command.contains(needle) {
+            return Some(needle.trim());
+        }
+    }
+    for segment in command.split(['|', ';', '&']) {
+        let token = first_token(segment);
+        if token.is_empty() {
+            continue;
+        }
+        let normalized = command_name(token);
+        for denied in dangerous_first_tokens() {
+            if normalized == *denied {
+                return Some(denied);
+            }
+        }
+    }
+    None
+}
+
+fn command_name(token: &str) -> &str {
+    let token = token.trim_start_matches('/');
+    token.rsplit('/').next().unwrap_or(token)
+}
+
+fn dangerous_first_tokens() -> &'static [&'static str] {
     &[
-        " rm ",
-        "rm -",
-        ";rm",
-        " del ",
-        "erase ",
+        "rm",
+        "del",
+        "erase",
         "remove-item",
-        " rmdir ",
-        " mv ",
-        " move ",
-        " cp ",
-        " copy-item ",
-        " chmod ",
-        " chown ",
-        " icacls ",
-        " takeown ",
-        " kill ",
-        " pkill ",
-        " taskkill ",
-        " stop-process",
+        "rmdir",
+        "mv",
+        "move",
+        "cp",
+        "copy-item",
+        "chmod",
+        "chown",
+        "icacls",
+        "takeown",
+        "kill",
+        "pkill",
+        "taskkill",
+        "stop-process",
         "restart-service",
-        " stop-service",
+        "stop-service",
         "start-service",
-        " set-service",
+        "set-service",
+        "iptables",
+        "ufw",
+        "firewall-cmd",
+        "netsh",
+        "set-item",
+        "set-itemproperty",
+        "new-item",
+        "new-service",
+        "new-scheduledtask",
+        "remove-scheduledtask",
+        "dsadd",
+        "dsmod",
+        "invoke-webrequest",
+        "invoke-restmethod",
+        "iwr",
+        "curl",
+        "wget",
+        "bitsadmin",
+        "ftp",
+        "scp",
+        "sftp",
+        "nc",
+        "ncat",
+        "socat",
+        "mkfs",
+        "passwd",
+    ]
+}
+
+fn dangerous_phrases() -> &'static [&'static str] {
+    &[
         "systemctl start",
         "systemctl stop",
         "systemctl restart",
@@ -218,38 +276,14 @@ fn hard_deny_tokens() -> &'static [&'static str] {
         "service restart",
         "service stop",
         "service start",
-        "iptables ",
-        " ufw ",
-        "firewall-cmd",
-        "netsh ",
         "reg add",
         "reg delete",
-        "set-item",
-        "set-itemproperty",
-        "new-item",
-        "new-service",
-        "new-scheduledtask",
-        "remove-scheduledtask",
         "schtasks /create",
         "schtasks /delete",
         "schtasks /change",
         "net user",
         "net localgroup",
-        "dsadd ",
-        "dsmod ",
-        "invoke-webrequest",
-        "invoke-restmethod",
-        "iwr ",
-        "curl ",
-        "wget ",
         "certutil -urlcache",
-        "bitsadmin",
-        "ftp ",
-        "scp ",
-        "sftp ",
-        " nc ",
-        "ncat ",
-        "socat ",
         "bash -i",
         "sh -i",
         "python -c",
@@ -261,13 +295,9 @@ fn hard_deny_tokens() -> &'static [&'static str] {
         "encodedcommand",
         "invoke-expression",
         "iex ",
-        "$(",
-        "`",
-        "mkfs",
         "mount -o remount",
         "dd if=",
         "dd of=",
-        "passwd ",
     ]
 }
 
@@ -368,5 +398,21 @@ mod tests {
     #[test]
     fn allows_ps() {
         assert!(validate_readonly_command("ps auxww").allowed);
+    }
+
+    #[test]
+    fn allows_suid_find_perm_check() {
+        assert!(validate_readonly_command("find / -xdev -perm -4000 -type f -ls").allowed);
+    }
+
+    #[test]
+    fn denies_unsafe_find_options() {
+        assert!(!validate_readonly_command("find / -delete").allowed);
+        assert!(!validate_readonly_command("find / -exec rm -f {} \\;").allowed);
+    }
+
+    #[test]
+    fn denies_dangerous_pipeline_segment() {
+        assert!(!validate_readonly_command("ps aux | rm -rf /tmp/x").allowed);
     }
 }

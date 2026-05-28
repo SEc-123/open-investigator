@@ -14,6 +14,7 @@ pub fn build_report(
     evidence: &[Evidence],
     scope: Vec<String>,
     ai_synthesis: Option<String>,
+    ai_risk_adjustment: Option<AiRiskAdjustment>,
 ) -> InvestigationReport {
     let risk = evidence
         .iter()
@@ -36,7 +37,7 @@ pub fn build_report(
     let findings = build_findings(evidence);
     let timeline = build_timeline(evidence);
     let gaps = build_gaps(evidence);
-    let recommendations = build_recommendations(evidence, risk);
+    let recommendations = build_recommendations(evidence, risk, ai_risk_adjustment.as_ref());
     let evidence_summaries = build_evidence_summaries(evidence);
     let conclusion = conclusion_text(risk, confidence, &findings, evidence);
 
@@ -51,6 +52,8 @@ pub fn build_report(
         scope,
         conclusion,
         risk,
+        ai_adjusted_risk: ai_risk_adjustment.as_ref().map(|item| item.risk),
+        ai_risk_rationale: ai_risk_adjustment.map(|item| item.rationale),
         confidence,
         findings,
         timeline,
@@ -85,7 +88,16 @@ pub fn to_markdown(report: &InvestigationReport) -> String {
     out.push_str("## 1. 调查结论\n\n");
     out.push_str(&format!("- Case：`{}`\n", report.case_id));
     out.push_str(&format!("- 调查问题：{}\n", report.question));
-    out.push_str(&format!("- 风险等级：{}\n", report.risk));
+    out.push_str(&format!("- 规则风险等级：{}\n", report.risk));
+    if let Some(ai_risk) = report.ai_adjusted_risk {
+        out.push_str(&format!("- AI 调整建议：{}\n", ai_risk));
+        if let Some(rationale) = &report.ai_risk_rationale {
+            out.push_str(&format!(
+                "- AI 调整理由：{}\n",
+                rationale.replace('\n', " ")
+            ));
+        }
+    }
     out.push_str(&format!("- 置信度：{}\n", report.confidence));
     out.push_str(&format!("- 核心判断：{}\n\n", report.conclusion));
     if let Some(ai) = &report.ai_synthesis {
@@ -273,8 +285,18 @@ fn build_gaps(evidence: &[Evidence]) -> Vec<String> {
     gaps
 }
 
-fn build_recommendations(evidence: &[Evidence], risk: Severity) -> Vec<String> {
+fn build_recommendations(
+    evidence: &[Evidence],
+    risk: Severity,
+    ai_risk_adjustment: Option<&AiRiskAdjustment>,
+) -> Vec<String> {
     let mut recs = Vec::new();
+    if let Some(adjustment) = ai_risk_adjustment {
+        recs.push(format!(
+            "人工复核 AI 风险调整建议（{}）：{}",
+            adjustment.risk, adjustment.rationale
+        ));
+    }
     if risk >= Severity::High {
         recs.push(
             "在企业现有 EDR/堡垒机/防火墙中按流程执行隔离、封禁或账号管控；本工具不直接执行处置。"
@@ -349,4 +371,70 @@ fn conclusion_text(
 
 fn escape_table(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AiRiskAdjustment {
+    pub risk: Severity,
+    pub rationale: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_report, to_markdown, AiRiskAdjustment};
+    use crate::case::CaseContext;
+    use crate::config::OiConfig;
+    use crate::model::{Confidence, EvidenceDraft, HostProfile, InvestigationMode, Severity};
+    use crate::store::EvidenceStore;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn report_keeps_rule_risk_when_ai_adjusts_risk() {
+        let mut cfg = OiConfig::default();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        cfg.case_dir = std::env::temp_dir().join(format!("oi-report-test-{suffix}"));
+        let ctx = CaseContext::new(&cfg, "scan", "test", "7d", InvestigationMode::Safe);
+        let mut store = EvidenceStore::new(&ctx).expect("store");
+        let ev = store
+            .add(EvidenceDraft {
+                event_time: None,
+                category: "process".to_string(),
+                source: "proc.snap".to_string(),
+                title: "可疑进程行为".to_string(),
+                summary: "发现临时目录解释器线索".to_string(),
+                raw_excerpt: None,
+                tags: vec!["suspicious_process".to_string()],
+                severity: Severity::High,
+                confidence: Confidence::Medium,
+            })
+            .expect("evidence");
+        let adjustment = AiRiskAdjustment {
+            risk: Severity::Low,
+            rationale: "更像 Jupyter 沙箱噪声".to_string(),
+        };
+
+        let report = build_report(
+            &ctx,
+            HostProfile::unknown(),
+            &[ev],
+            vec!["guardrail.proc.snap".to_string()],
+            Some("AI synthesis".to_string()),
+            Some(adjustment),
+        );
+
+        assert_eq!(report.risk, Severity::High);
+        assert_eq!(report.ai_adjusted_risk, Some(Severity::Low));
+        assert_eq!(
+            report.ai_risk_rationale.as_deref(),
+            Some("更像 Jupyter 沙箱噪声")
+        );
+        let md = to_markdown(&report);
+        assert!(md.contains("规则风险等级：high"));
+        assert!(md.contains("AI 调整建议：low"));
+        let _ = fs::remove_dir_all(cfg.case_dir);
+    }
 }

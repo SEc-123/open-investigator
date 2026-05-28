@@ -93,15 +93,22 @@ impl InvestigationEngine {
         }
 
         let evidence = store.load_evidence()?;
-        let draft = build_report(&ctx, host.clone(), &evidence, scope.clone(), None);
-        let ai_synthesis = if ctx.ai_enabled && self.cfg.ai_enabled {
+        let draft = build_report(&ctx, host.clone(), &evidence, scope.clone(), None, None);
+        let ai_result = if ctx.ai_enabled && self.cfg.ai_enabled {
             synthesize_with_ai(&self.cfg, &draft, &evidence)
                 .await
-                .unwrap_or(None)
+                .unwrap_or_default()
         } else {
-            None
+            Default::default()
         };
-        let report = build_report(&ctx, host, &evidence, scope, ai_synthesis);
+        let report = build_report(
+            &ctx,
+            host,
+            &evidence,
+            scope,
+            ai_result.text,
+            ai_result.risk_adjustment,
+        );
         write_report_files(&report, store.case_dir(), ctx.output.as_deref())?;
         Ok(report)
     }
@@ -194,7 +201,7 @@ fn run_deterministic_guardrail(
                 collector::analyze_java(store, runner)
             })?;
             run_tool("mem.check", coverage, scope, || {
-                collector::memory_low_impact(store, runner)
+                collector::memory_low_impact_without_java(store, runner)
             })?;
             run_tool("web.check", coverage, scope, || {
                 collector::analyze_web(store, sources, ctx)
@@ -212,9 +219,6 @@ fn run_deterministic_guardrail(
         "mem" => {
             run_tool("mem.check", coverage, scope, || {
                 collector::memory_low_impact(store, runner)
-            })?;
-            run_tool("java.check", coverage, scope, || {
-                collector::analyze_java(store, runner)
             })?;
             run_tool("proc.snap", coverage, scope, || {
                 collector::snapshot_processes(store, runner)

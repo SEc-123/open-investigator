@@ -1,5 +1,7 @@
 use crate::case::CaseContext;
-use crate::model::{Confidence, EvidenceDraft, HostProfile, LogSource, OsKind, Severity};
+use crate::model::{
+    Confidence, EvidenceDraft, HostProfile, LogSource, OsKind, Severity, ToolRunOutput,
+};
 use crate::runner::CommandRunner;
 use crate::store::EvidenceStore;
 use crate::util::{
@@ -363,6 +365,8 @@ pub fn analyze_auth(
 pub fn snapshot_processes(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Result<()> {
     let cmd = if cfg!(windows) {
         "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine"
+    } else if cfg!(target_os = "macos") {
+        "ps -axo pid,ppid,user,lstart,etime,comm,args"
     } else {
         "ps -eo pid,ppid,user,lstart,etime,comm,args --cols 240"
     };
@@ -395,6 +399,12 @@ pub fn snapshot_processes(store: &mut EvidenceStore, runner: &mut CommandRunner)
         ],
         120,
     );
+    let jupyter_noise = jupyter_kernel_noise_lines(&suspicious);
+    let actionable_suspicious = suspicious
+        .iter()
+        .filter(|line| !jupyter_noise.iter().any(|noise| noise == *line))
+        .cloned()
+        .collect::<Vec<_>>();
     store.add(EvidenceDraft {
         event_time: None,
         category: "process".to_string(),
@@ -403,14 +413,33 @@ pub fn snapshot_processes(store: &mut EvidenceStore, runner: &mut CommandRunner)
         summary: format!("收集进程快照；可疑样本 {} 条", suspicious.len()),
         raw_excerpt: Some(truncate_text(&out.stdout, 20_000)),
         tags: vec!["process_snapshot".to_string()],
-        severity: if suspicious.is_empty() {
+        severity: if actionable_suspicious.is_empty() {
             Severity::Info
         } else {
             Severity::Medium
         },
         confidence: Confidence::Medium,
     })?;
-    if !suspicious.is_empty() {
+    if !jupyter_noise.is_empty() {
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "process".to_string(),
+            source: "proc.snap".to_string(),
+            title: "Jupyter kernel 临时连接文件噪声".to_string(),
+            summary: format!(
+                "识别到 {} 条 ipykernel 临时连接文件进程，更像 Notebook/Jupyter/沙箱运行噪声",
+                jupyter_noise.len()
+            ),
+            raw_excerpt: Some(truncate_text(&jupyter_noise.join("\n"), 8_000)),
+            tags: vec![
+                "suspicious_process".to_string(),
+                "jupyter_noise".to_string(),
+            ],
+            severity: Severity::Low,
+            confidence: Confidence::High,
+        })?;
+    }
+    if !actionable_suspicious.is_empty() {
         store.add(EvidenceDraft {
             event_time: None,
             category: "process".to_string(),
@@ -418,7 +447,7 @@ pub fn snapshot_processes(store: &mut EvidenceStore, runner: &mut CommandRunner)
             title: "可疑进程行为".to_string(),
             summary: "发现临时目录执行、高危解释器、网络工具或 Java Agent/JDWP 等可疑进程线索"
                 .to_string(),
-            raw_excerpt: Some(truncate_text(&suspicious.join("\n"), 12_000)),
+            raw_excerpt: Some(truncate_text(&actionable_suspicious.join("\n"), 12_000)),
             tags: vec!["suspicious_process".to_string()],
             severity: Severity::High,
             confidence: Confidence::Medium,
@@ -797,11 +826,15 @@ pub fn analyze_web(
 pub fn analyze_java(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Result<()> {
     let proc_cmd = if cfg!(windows) {
         "Get-CimInstance Win32_Process | Where-Object {$_.Name -like '*java*'} | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine"
+    } else if cfg!(target_os = "macos") {
+        "ps -axo pid,ppid,user,lstart,etime,comm,args"
     } else {
-        "ps -eo pid,ppid,user,lstart,etime,comm,args --cols 260 | grep java"
+        "ps -eo pid,ppid,user,lstart,etime,comm,args --cols 260"
     };
     let out = runner.run_builtin(store, proc_cmd, "java process survey")?;
-    if out.stdout.trim().is_empty() {
+    record_command_diagnostic(store, "java", "java.check diagnostic", &out)?;
+    let java_processes = java_process_lines(&out.stdout).join("\n");
+    if java_processes.trim().is_empty() {
         store.add(EvidenceDraft::info(
             "java",
             "java.check",
@@ -811,7 +844,7 @@ pub fn analyze_java(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Re
         return Ok(());
     }
     let sus = suspicious_lines(
-        &out.stdout,
+        &java_processes,
         &[
             "-javaagent",
             "-agentlib",
@@ -833,7 +866,7 @@ pub fn analyze_java(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Re
         source: "java.check process".to_string(),
         title: "Java 进程与启动参数".to_string(),
         summary: format!("发现 Java 进程；可疑/需复核参数样本 {} 条", sus.len()),
-        raw_excerpt: Some(truncate_text(&out.stdout, 18_000)),
+        raw_excerpt: Some(truncate_text(&java_processes, 18_000)),
         tags: vec!["java_process".to_string()],
         severity: if sus.is_empty() {
             Severity::Info
@@ -845,6 +878,7 @@ pub fn analyze_java(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Re
 
     if command_exists("jps") {
         let jps = runner.run_builtin(store, "jps -lv", "java jps process list")?;
+        record_command_diagnostic(store, "java", "java.check diagnostic", &jps)?;
         if !jps.stdout.trim().is_empty() {
             store.add(EvidenceDraft {
                 event_time: None,
@@ -861,12 +895,13 @@ pub fn analyze_java(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Re
     }
 
     if command_exists("jcmd") {
-        for pid in extract_pids_from_java_output(&out.stdout)
+        for pid in extract_pids_from_java_output(&java_processes)
             .into_iter()
             .take(5)
         {
             let cmd = format!("jcmd {pid} VM.command_line");
             let jcmd = runner.run_builtin(store, &cmd, "java VM.command_line")?;
+            record_command_diagnostic(store, "java", "java.check diagnostic", &jcmd)?;
             let keywords = suspicious_lines(
                 &jcmd.stdout,
                 &[
@@ -1493,6 +1528,13 @@ pub fn analyze_packages(store: &mut EvidenceStore, runner: &mut CommandRunner) -
 
 pub fn memory_low_impact(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Result<()> {
     analyze_java(store, runner)?;
+    memory_low_impact_without_java(store, runner)
+}
+
+pub fn memory_low_impact_without_java(
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+) -> Result<()> {
     snapshot_processes(store, runner)?;
     snapshot_network(store, runner, None)?;
     store.add(EvidenceDraft {
@@ -1696,6 +1738,135 @@ fn suspicious_lines(raw: &str, needles: &[&str], limit: usize) -> Vec<String> {
     out
 }
 
+fn java_process_lines(raw: &str) -> Vec<String> {
+    raw.lines()
+        .filter(|line| is_java_process_line(line))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn is_java_process_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    if !lower.contains("java") {
+        return false;
+    }
+    if lower.contains("open-investigator") || lower.contains("target/debug/oi") {
+        return false;
+    }
+    lower.split_whitespace().any(|token| {
+        let token = token.trim_matches(['"', '\'']);
+        let name = token.rsplit(['/', '\\']).next().unwrap_or(token);
+        name == "java"
+            || name == "java.exe"
+            || name == "jsvc"
+            || name == "jsvc.exe"
+            || name.starts_with("java ")
+            || name.starts_with("java-")
+    })
+}
+
+fn jupyter_kernel_noise_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|line| is_jupyter_kernel_noise(line))
+        .cloned()
+        .collect()
+}
+
+fn is_jupyter_kernel_noise(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.contains("ipykernel_launcher")
+        && lower.contains(" -f ")
+        && extract_ipykernel_connection_path(line)
+            .as_deref()
+            .map(is_probable_kernel_connection_file)
+            .unwrap_or(false)
+}
+
+fn extract_ipykernel_connection_path(line: &str) -> Option<String> {
+    let mut parts = line.split_whitespace();
+    while let Some(part) = parts.next() {
+        if part == "-f" {
+            return parts
+                .next()
+                .map(|value| value.trim_matches(['\'', '"']).to_string());
+        }
+    }
+    None
+}
+
+fn is_probable_kernel_connection_file(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    let in_temp = lower.starts_with("/tmp/")
+        || lower.starts_with("/var/tmp/")
+        || lower.starts_with("/dev/shm/")
+        || lower.contains("/appdata/local/temp/")
+        || lower.contains("\\appdata\\local\\temp\\");
+    if !in_temp || !lower.ends_with(".json") {
+        return false;
+    }
+    let Ok(raw) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    [
+        "shell_port",
+        "iopub_port",
+        "stdin_port",
+        "control_port",
+        "hb_port",
+    ]
+    .iter()
+    .all(|key| obj.get(*key).and_then(|v| v.as_i64()).is_some())
+        && obj.get("key").is_some()
+        && obj.get("transport").is_some()
+}
+
+fn record_command_diagnostic(
+    store: &mut EvidenceStore,
+    category: &str,
+    source: &str,
+    out: &ToolRunOutput,
+) -> Result<()> {
+    let failed = !out.allowed
+        || out.exit_code.map(|code| code != 0).unwrap_or(true)
+        || out
+            .stderr
+            .contains("[open-investigator] command timed out and was killed");
+    if !failed {
+        return Ok(());
+    }
+    let exit = out
+        .exit_code
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "signal/unknown".to_string());
+    let mut detail = format!(
+        "命令 `{}` 执行异常：allowed={} exit={} reason={}",
+        out.command, out.allowed, exit, out.reason
+    );
+    if !out.stderr.trim().is_empty() {
+        detail.push_str(" stderr=");
+        detail.push_str(out.stderr.trim());
+    }
+    store.add(EvidenceDraft {
+        event_time: None,
+        category: category.to_string(),
+        source: source.to_string(),
+        title: "只读命令诊断".to_string(),
+        summary: detail.clone(),
+        raw_excerpt: Some(truncate_text(&detail, 8_000)),
+        tags: vec!["command_diagnostic".to_string()],
+        severity: Severity::Low,
+        confidence: Confidence::High,
+    })?;
+    Ok(())
+}
+
 fn extract_first_ipish(line: &str) -> Option<String> {
     for part in line.split_whitespace() {
         let value = part.trim_matches(|c: char| {
@@ -1760,8 +1931,10 @@ fn extract_pids_from_java_output(raw: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_matching_lines, scan_file_for};
+    use super::{is_jupyter_kernel_noise, read_matching_lines, scan_file_for};
+    use std::fs;
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn missing_log_file_scans_as_empty() {
@@ -1772,5 +1945,49 @@ mod tests {
 
         assert!(ioc_matches.is_empty());
         assert!(tail.is_empty());
+    }
+
+    #[test]
+    fn recognizes_jupyter_kernel_connection_noise() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let path = Path::new("/tmp").join(format!("tmp{suffix}.json"));
+        fs::write(
+            &path,
+            r#"{
+              "shell_port": 57127,
+              "iopub_port": 57128,
+              "stdin_port": 57129,
+              "control_port": 57130,
+              "hb_port": 57131,
+              "ip": "127.0.0.1",
+              "key": "redacted",
+              "transport": "tcp",
+              "signature_scheme": "hmac-sha256",
+              "kernel_name": ""
+            }"#,
+        )
+        .expect("write kernel connection file");
+        let line = format!(
+            "123 1 user python /opt/pyvenv/bin/python -m ipykernel_launcher -f {}",
+            path.display()
+        );
+
+        assert!(is_jupyter_kernel_noise(&line));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn java_process_filter_ignores_oi_command_text() {
+        let raw = "\
+123 1 user Thu Jan 1 00:00:00 1970 00:00.00 oi target/debug/oi java -s 14d
+456 1 app Thu Jan 1 00:00:00 1970 00:00.00 java /usr/bin/java -jar app.jar";
+
+        let lines = super::java_process_lines(raw);
+
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("/usr/bin/java -jar app.jar"));
     }
 }

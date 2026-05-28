@@ -5,6 +5,7 @@ use crate::store::EvidenceStore;
 use crate::util::truncate_text;
 use anyhow::{Context, Result};
 use chrono::Utc;
+use std::io::Read;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -109,6 +110,16 @@ impl CommandRunner {
             .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("spawn readonly command `{command}`"))?;
+        let stdout_cap = self.max_output_bytes;
+        let stderr_cap = self.max_output_bytes;
+        let stdout_reader = child
+            .stdout
+            .take()
+            .map(|stdout| thread::spawn(move || read_limited(stdout, stdout_cap)));
+        let stderr_reader = child
+            .stderr
+            .take()
+            .map(|stderr| thread::spawn(move || read_limited(stderr, stderr_cap)));
 
         let mut timed_out = false;
         loop {
@@ -123,12 +134,14 @@ impl CommandRunner {
             thread::sleep(Duration::from_millis(100));
         }
 
-        let output = child
-            .wait_with_output()
-            .with_context(|| format!("collect output for `{command}`"))?;
+        let status = child
+            .wait()
+            .with_context(|| format!("collect status for `{command}`"))?;
+        let (stdout_bytes, stdout_dropped) = join_reader(stdout_reader);
+        let (stderr_bytes, stderr_dropped) = join_reader(stderr_reader);
         let duration_ms = start.elapsed().as_millis();
-        let mut stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let mut stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let mut stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
+        let mut stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
         if timed_out {
             stderr.push_str("\n[open-investigator] command timed out and was killed");
         }
@@ -137,8 +150,9 @@ impl CommandRunner {
         let stderr_limit = self.max_output_bytes.saturating_sub(stdout_limit);
         stdout = truncate_text(&stdout, stdout_limit);
         stderr = truncate_text(&stderr, stderr_limit);
-        let truncated = original_len > stdout.len() + stderr.len();
-        let exit_code = output.status.code();
+        let truncated =
+            stdout_dropped || stderr_dropped || original_len > stdout.len() + stderr.len();
+        let exit_code = status.code();
 
         let record = CommandRecord {
             at: Utc::now(),
@@ -162,6 +176,40 @@ impl CommandRunner {
             truncated,
         })
     }
+}
+
+fn read_limited<R: Read>(mut reader: R, cap: usize) -> (Vec<u8>, bool) {
+    let mut out = Vec::new();
+    let mut dropped = false;
+    let mut buf = [0_u8; 8192];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                let remaining = cap.saturating_sub(out.len());
+                if remaining == 0 {
+                    dropped = true;
+                    continue;
+                }
+                let take = n.min(remaining);
+                out.extend_from_slice(&buf[..take]);
+                if take < n {
+                    dropped = true;
+                }
+            }
+            Err(_) => {
+                dropped = true;
+                break;
+            }
+        }
+    }
+    (out, dropped)
+}
+
+fn join_reader(handle: Option<thread::JoinHandle<(Vec<u8>, bool)>>) -> (Vec<u8>, bool) {
+    handle
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_else(|| (Vec::new(), true))
 }
 
 fn shell_command(command: &str) -> Command {
