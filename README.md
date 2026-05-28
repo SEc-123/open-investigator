@@ -35,7 +35,6 @@ open-investigator/
   scripts/check.sh
 ```
 
-Open Investigator intentionally does not include code editing, patch generation, source-code audit workflows, IDE or desktop surfaces, team orchestration, app connector discovery, web browsing, image tooling, shell escalation, license services, or response/remediation actions.
 
 ## Runtime model
 
