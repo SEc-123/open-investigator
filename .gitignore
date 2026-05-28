@@ -1,0 +1,5 @@
+/target/
+.oi/
+.open-investigator/
+*.log
+.DS_Store

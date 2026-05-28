@@ -1,0 +1,30 @@
+# Open Investigator configuration.
+# The API key is intentionally not stored here by default. Set it through:
+#   export OPEN_INVESTIGATOR_API_KEY="sk-..."
+# OPENAI_API_KEY is also accepted for compatibility.
+
+model = "gpt-4.1-mini"
+# Optional split models:
+# planning_model = "gpt-4.1-mini"
+# synthesis_model = "gpt-4.1-mini"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPEN_INVESTIGATOR_API_KEY"
+
+case_dir = ".oi/cases"
+max_commands = 160
+command_timeout_seconds = 30
+max_output_bytes = 2000000
+
+ai_enabled = true
+ai_planning_enabled = true
+# AI-first means: host/log discovery -> model calls sealed oi_* tools -> evidence observations -> continued tool calls or final answer.
+ai_first = true
+# Guardrail baseline fills required host coverage if the model misses important categories.
+ai_guardrail_baseline = true
+ai_max_rounds = 4
+ai_max_actions_per_round = 5
+ai_context_evidence_limit = 120
+ai_context_char_limit = 36000
+ai_planning_temperature = 0.1
+ai_synthesis_temperature = 0.2
+ai_request_timeout_seconds = 90
