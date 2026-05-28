@@ -43,7 +43,7 @@ enum Commands {
     #[command(alias = "pkg")]
     Package(RunArgs),
     Deep(RunArgs),
-    Logs(RunArgs),
+    Logs(LogsCmd),
     File(FileCmd),
     #[command(alias = "rep")]
     Report(ReportCmd),
@@ -128,6 +128,18 @@ struct WebCmd {
 struct NetCmd {
     #[arg(long)]
     ip: Option<String>,
+    #[command(flatten)]
+    run: RunArgs,
+}
+
+#[derive(Args)]
+struct LogsCmd {
+    /// Literal IP to search across discovered logs.
+    #[arg(long)]
+    ip: Option<String>,
+    /// Literal keyword/pattern to search across discovered logs.
+    #[arg(long)]
+    keyword: Option<String>,
     #[command(flatten)]
     run: RunArgs,
 }
@@ -269,8 +281,20 @@ async fn main() -> Result<()> {
             let ctx = make_ctx(&cfg, "deep", "平台深度只读调查", args)?;
             run_case(&mut cfg, ctx).await?;
         }
-        Commands::Logs(args) => {
-            let ctx = make_ctx(&cfg, "logs", "发现服务器日志源", args)?;
+        Commands::Logs(cmd) => {
+            let target = cmd.ip.clone().or(cmd.keyword.clone());
+            let ioc_type = if cmd.ip.is_some() {
+                Some("ip".to_string())
+            } else if cmd.keyword.is_some() {
+                Some("keyword".to_string())
+            } else {
+                None
+            };
+            let question = target
+                .as_ref()
+                .map(|value| format!("发现服务器日志源并检索 `{}`", value))
+                .unwrap_or_else(|| "发现服务器日志源".to_string());
+            let ctx = make_ctx(&cfg, "logs", question, cmd.run)?.with_ioc(target, ioc_type);
             run_case(&mut cfg, ctx).await?;
         }
         Commands::File(cmd) => {

@@ -279,7 +279,13 @@ fn run_deterministic_guardrail(
                 collector::analyze_windows_deep(store, runner)
             })?;
         }
-        "logs" => {}
+        "logs" => {
+            if let Some(ioc) = ctx.ioc.as_deref() {
+                run_tool("ioc.find", coverage, scope, || {
+                    collector::search_ioc(store, runner, sources, ioc, &ctx.since)
+                })?;
+            }
+        }
         "file" => {
             run_tool("file.recent", coverage, scope, || {
                 collector::recent_files(store, ctx)

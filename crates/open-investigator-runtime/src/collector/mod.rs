@@ -583,20 +583,20 @@ pub fn snapshot_accounts(store: &mut EvidenceStore, runner: &mut CommandRunner) 
             severity: Severity::Info,
             confidence: Confidence::High,
         })?;
-        let auth_keys = find_authorized_keys();
-        if !auth_keys.is_empty() {
+        let (auth_key_summaries, has_unrestricted_root_key) = summarize_authorized_keys();
+        if !auth_key_summaries.is_empty() {
             store.add(EvidenceDraft {
                 event_time: None,
                 category: "account".to_string(),
                 source: "authorized_keys".to_string(),
-                title: "SSH authorized_keys 发现".to_string(),
+                title: "SSH authorized_keys 内容复核".to_string(),
                 summary: format!(
-                    "发现 {} 个 authorized_keys 文件，建议复核是否存在攻击者公钥",
-                    auth_keys.len()
+                    "发现 {} 条 authorized_keys 文件/条目摘要；已隐藏公钥正文，仅保留路径、行号、key 类型、限制选项和权限信息",
+                    auth_key_summaries.len()
                 ),
-                raw_excerpt: Some(auth_keys.join("\n")),
-                tags: vec!["ssh_key_persistence".to_string()],
-                severity: Severity::Medium,
+                raw_excerpt: Some(truncate_text(&auth_key_summaries.join("\n"), 14_000)),
+                tags: vec!["ssh_key_persistence".to_string(), "authorized_keys_review".to_string()],
+                severity: if has_unrestricted_root_key { Severity::High } else { Severity::Medium },
                 confidence: Confidence::Medium,
             })?;
         }
@@ -1123,6 +1123,27 @@ pub fn snapshot_services(store: &mut EvidenceStore, runner: &mut CommandRunner) 
                 } else {
                     Severity::High
                 },
+                confidence: Confidence::Medium,
+            })?;
+        }
+        let unit_findings = suspicious_systemd_unit_contents();
+        if !unit_findings.is_empty() {
+            store.add(EvidenceDraft {
+                event_time: None,
+                category: "service".to_string(),
+                source: "svc.snap unit-files".to_string(),
+                title: "可疑 systemd unit 内容".to_string(),
+                summary: format!(
+                    "systemd unit 文件正文中发现 {} 个可疑样本",
+                    unit_findings.len()
+                ),
+                raw_excerpt: Some(truncate_text(&unit_findings.join("\n---\n"), 16_000)),
+                tags: vec![
+                    "service_snapshot".to_string(),
+                    "service_unit_content".to_string(),
+                    "persistence_suspicious".to_string(),
+                ],
+                severity: Severity::High,
                 confidence: Confidence::Medium,
             })?;
         }
@@ -3051,6 +3072,167 @@ fn find_authorized_keys() -> Vec<String> {
         .collect()
 }
 
+fn summarize_authorized_keys() -> (Vec<String>, bool) {
+    let mut summaries = Vec::new();
+    let mut has_unrestricted_root_key = false;
+    for path in find_authorized_keys() {
+        let p = PathBuf::from(&path);
+        let mode = file_mode_octal(&p);
+        let Ok(raw) = read_to_string_lossy(&p, 120_000) else {
+            summaries.push(format!("{path} mode={mode} unreadable"));
+            continue;
+        };
+        let mut active = 0usize;
+        for (idx, line) in raw.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            active += 1;
+            let key_type = authorized_key_type(trimmed).unwrap_or("unknown");
+            let has_options = authorized_key_has_options(trimmed);
+            let has_from = authorized_key_option_present(trimmed, "from=");
+            let has_command = authorized_key_option_present(trimmed, "command=");
+            let root_key =
+                path == "/root/.ssh/authorized_keys" || path.contains("/root/.ssh/authorized_keys");
+            let unrestricted = !has_options;
+            if root_key && unrestricted {
+                has_unrestricted_root_key = true;
+            }
+            let mut flags = Vec::new();
+            if root_key {
+                flags.push("root_path");
+            }
+            if unrestricted {
+                flags.push("unrestricted");
+            }
+            if has_from {
+                flags.push("from_restricted");
+            }
+            if has_command {
+                flags.push("command_restricted");
+            }
+            summaries.push(format!(
+                "{}:{} mode={} key_type={} options={} flags={}",
+                path,
+                idx + 1,
+                mode,
+                key_type,
+                if has_options { "present" } else { "none" },
+                if flags.is_empty() {
+                    "none".to_string()
+                } else {
+                    flags.join(",")
+                }
+            ));
+        }
+        if active == 0 {
+            summaries.push(format!("{path} mode={mode} active_keys=0"));
+        }
+    }
+    (summaries, has_unrestricted_root_key)
+}
+
+fn authorized_key_type(line: &str) -> Option<&'static str> {
+    for token in line.split_whitespace() {
+        if token.starts_with("ssh-rsa") {
+            return Some("ssh-rsa");
+        }
+        if token.starts_with("ssh-ed25519") {
+            return Some("ssh-ed25519");
+        }
+        if token.starts_with("ecdsa-sha2-") {
+            return Some("ecdsa");
+        }
+        if token.starts_with("sk-ssh-") || token.starts_with("sk-ecdsa-") {
+            return Some("security-key");
+        }
+    }
+    None
+}
+
+fn authorized_key_has_options(line: &str) -> bool {
+    let first = line.split_whitespace().next().unwrap_or("");
+    !matches!(authorized_key_type(first), Some(_))
+}
+
+fn authorized_key_option_present(line: &str, option: &str) -> bool {
+    let first = line
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    first.starts_with(option) || first.contains(&format!(",{option}"))
+}
+
+fn file_mode_octal(path: &Path) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return fs::metadata(path)
+            .map(|meta| format!("{:04o}", meta.permissions().mode() & 0o7777))
+            .unwrap_or_else(|_| "unknown".to_string());
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        "unknown".to_string()
+    }
+}
+
+fn suspicious_systemd_unit_contents() -> Vec<String> {
+    let roots = [
+        PathBuf::from("/etc/systemd/system"),
+        PathBuf::from("/run/systemd/system"),
+        PathBuf::from("/usr/lib/systemd/system"),
+        PathBuf::from("/lib/systemd/system"),
+    ];
+    let mut findings = Vec::new();
+    for file in collect_files_limited(&roots, 4, 1_500) {
+        let Some(name) = file.file_name().and_then(|v| v.to_str()) else {
+            continue;
+        };
+        if !(name.ends_with(".service") || name.ends_with(".timer") || name.ends_with(".socket")) {
+            continue;
+        }
+        let Ok(raw) = read_to_string_lossy(&file, 160_000) else {
+            continue;
+        };
+        let sus = suspicious_lines(
+            &raw,
+            &[
+                "execstart=/tmp/",
+                "execstart=/var/tmp/",
+                "execstart=/dev/shm/",
+                "/tmp/",
+                "/var/tmp/",
+                "/dev/shm/",
+                "curl ",
+                "wget ",
+                "nc ",
+                "ncat ",
+                "socat ",
+                "bash -c",
+                "sh -c",
+                "python -c",
+                "perl -e",
+                "base64",
+                "chmod +x",
+                "jdwp",
+                "javaagent",
+            ],
+            20,
+        );
+        if !sus.is_empty() {
+            findings.push(format!("{}\n{}", file.display(), sus.join("\n")));
+            if findings.len() >= 80 {
+                break;
+            }
+        }
+    }
+    findings
+}
+
 fn default_web_roots() -> Vec<PathBuf> {
     if cfg!(windows) {
         vec![PathBuf::from("C:/inetpub/wwwroot")]
@@ -3080,6 +3262,7 @@ fn extract_pids_from_java_output(raw: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
+        authorized_key_has_options, authorized_key_option_present, authorized_key_type,
         is_jupyter_kernel_noise, parse_package_records, read_matching_lines,
         risky_network_listeners, scan_file_for, suspicious_packages, PackageRecord,
     };
@@ -3141,6 +3324,18 @@ mod tests {
 
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("/usr/bin/java -jar app.jar"));
+    }
+
+    #[test]
+    fn summarizes_authorized_key_options_without_key_material() {
+        let unrestricted = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKey comment";
+        let restricted = r#"from="127.0.0.1",command="/bin/false" ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDfake restricted"#;
+
+        assert_eq!(authorized_key_type(unrestricted), Some("ssh-ed25519"));
+        assert!(!authorized_key_has_options(unrestricted));
+        assert!(authorized_key_has_options(restricted));
+        assert!(authorized_key_option_present(restricted, "from="));
+        assert!(authorized_key_option_present(restricted, "command="));
     }
 
     #[test]

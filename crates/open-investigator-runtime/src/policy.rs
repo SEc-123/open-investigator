@@ -57,7 +57,7 @@ pub fn validate_readonly_command(command: &str) -> PolicyDecision {
         return PolicyDecision::deny("blocked output redirection/write operator");
     }
 
-    for segment in lower.split(['|', ';', '&']) {
+    for segment in split_command_segments(&lower) {
         let token = first_token(segment);
         if token.is_empty() {
             continue;
@@ -76,6 +76,36 @@ fn contains_write_redirection(command: &str) -> bool {
         || command.contains(" &>")
         || command.contains(" >")
         || command.contains("tee ")
+}
+
+fn split_command_segments(command: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escape = false;
+
+    for (idx, ch) in command.char_indices() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if ch == '\\' {
+            escape = true;
+            continue;
+        }
+        match quote {
+            Some(q) if ch == q => quote = None,
+            Some(_) => {}
+            None if ch == '\'' || ch == '"' => quote = Some(ch),
+            None if matches!(ch, '|' | ';' | '&') => {
+                out.push(command[start..idx].trim());
+                start = idx + ch.len_utf8();
+            }
+            None => {}
+        }
+    }
+    out.push(command[start..].trim());
+    out
 }
 
 fn first_token(segment: &str) -> &str {
@@ -212,7 +242,7 @@ fn blocked_dangerous_token(command: &str) -> Option<&'static str> {
             return Some(needle.trim());
         }
     }
-    for segment in command.split(['|', ';', '&']) {
+    for segment in split_command_segments(command) {
         let token = first_token(segment);
         if token.is_empty() {
             continue;
@@ -463,5 +493,11 @@ mod tests {
     fn allows_jvm_non_dump_diagnostics() {
         assert!(validate_readonly_command("jstack -l 123").allowed);
         assert!(validate_readonly_command("jmap -histo 123").allowed);
+    }
+
+    #[test]
+    fn allows_quoted_regex_pipe_in_grep() {
+        assert!(validate_readonly_command(r#"ss -antup | grep -E "4444|5005""#).allowed);
+        assert!(validate_readonly_command("grep -E 'cmd=|jndi' /var/log/nginx/access.log").allowed);
     }
 }
