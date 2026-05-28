@@ -1,0 +1,95 @@
+name: Release binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and publish
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            artifact: open-investigator-${{ github.event.inputs.tag }}-linux-x86_64
+            archive: tar
+            binary: oi
+          - name: windows-x86_64
+            os: windows-latest
+            artifact: open-investigator-${{ github.event.inputs.tag }}-windows-x86_64
+            archive: zip
+            binary: oi.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - name: Build release binary
+        run: cargo build --locked --release --bin oi
+
+      - name: Stage Linux package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "dist/${{ matrix.artifact }}"
+          cp "target/release/${{ matrix.binary }}" "dist/${{ matrix.artifact }}/"
+          cp README.md LICENSE "dist/${{ matrix.artifact }}/"
+          cp examples/config.toml "dist/${{ matrix.artifact }}/config.example.toml"
+          (cd dist && tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}")
+
+      - name: Stage Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist/${{ matrix.artifact }}" | Out-Null
+          Copy-Item "target/release/${{ matrix.binary }}" "dist/${{ matrix.artifact }}/"
+          Copy-Item "README.md" "dist/${{ matrix.artifact }}/"
+          Copy-Item "LICENSE" "dist/${{ matrix.artifact }}/"
+          Copy-Item "examples/config.toml" "dist/${{ matrix.artifact }}/config.example.toml"
+          Compress-Archive -Path "dist/${{ matrix.artifact }}" -DestinationPath "dist/${{ matrix.artifact }}.zip" -Force
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Open Investigator $TAG" --notes "Open-source AI-driven server investigator release $TAG."
+          gh release upload "$TAG" dist/* --clobber
