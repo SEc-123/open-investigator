@@ -79,7 +79,7 @@ Runtime:
 
 The model can then call more tools or produce a final answer.
 
-## AI-visible function tools
+## Safe-mode AI-visible function tools
 
 ```text
 oi_ioc_find
@@ -103,10 +103,14 @@ oi_pkg_check
 Investigator mode only:
 
 ```text
+oi_java_deep
+oi_java_dump
 oi_ro_run
 ```
 
-Internally these map to investigator actions such as `ioc.find`, `auth.check`, `proc.snap`, `web.check`, and `java.check`.
+Internally these map to investigator actions such as `ioc.find`, `auth.check`, `proc.snap`, `web.check`, `java.check`, `java.deep`, and `java.dump`.
+
+`java.deep` remains additionally gated by `--java-deep`; `java.dump` requires `--java-deep` plus `--heap-dump` or `--jfr-dump`. The raw read-only shell policy blocks JVM dump commands so artifact collection cannot bypass these collectors.
 
 ## Evidence model
 

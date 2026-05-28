@@ -123,6 +123,18 @@ fn validate_command_specific_args(command: &str) -> PolicyDecision {
     if command.contains("crontab ") && !command.contains(" -l") {
         return PolicyDecision::deny("crontab is limited to -l");
     }
+    if command.contains("gc.heap_dump")
+        || command.contains("jfr.dump")
+        || command.contains("jmap -dump")
+    {
+        return PolicyDecision::deny("JVM dump creation is not allowed through readonly shell; use explicit --heap-dump/--jfr-dump gated collectors");
+    }
+    if command.starts_with("jmap ") {
+        let allowed = [" -histo", " -clstats", " -heap", " -finalizerinfo"];
+        if !allowed.iter().any(|item| command.contains(item)) {
+            return PolicyDecision::deny("jmap is limited to non-dump diagnostic queries");
+        }
+    }
     if command.starts_with("docker ") {
         let allowed = [
             " ps",
@@ -345,6 +357,8 @@ fn linux_allowed() -> &'static [&'static str] {
         "mount",
         "jcmd",
         "jps",
+        "jstack",
+        "jmap",
         "readlink",
         "basename",
         "dirname",
@@ -436,5 +450,18 @@ mod tests {
         assert!(!validate_readonly_command("apt install nmap").allowed);
         assert!(!validate_readonly_command("apt remove nmap").allowed);
         assert!(!validate_readonly_command("dpkg --remove nmap").allowed);
+    }
+
+    #[test]
+    fn denies_jvm_dump_through_readonly_shell() {
+        assert!(!validate_readonly_command("jcmd 123 GC.heap_dump /tmp/a.hprof").allowed);
+        assert!(!validate_readonly_command("jcmd 123 JFR.dump filename=/tmp/a.jfr").allowed);
+        assert!(!validate_readonly_command("jmap -dump:live,file=/tmp/a.hprof 123").allowed);
+    }
+
+    #[test]
+    fn allows_jvm_non_dump_diagnostics() {
+        assert!(validate_readonly_command("jstack -l 123").allowed);
+        assert!(validate_readonly_command("jmap -histo 123").allowed);
     }
 }

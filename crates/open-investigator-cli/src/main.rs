@@ -76,6 +76,18 @@ struct RunArgs {
     out: Option<PathBuf>,
     #[arg(long)]
     no_ai: bool,
+    /// Enable JVM internal inspection for Java memory-shell investigations.
+    /// Requires investigator mode by default because it attaches to target JVMs.
+    #[arg(long = "java-deep")]
+    java_deep: bool,
+    /// Explicitly allow heap dump creation into the case artifact directory.
+    /// Requires --java-deep and -m inv.
+    #[arg(long = "heap-dump")]
+    heap_dump: bool,
+    /// Explicitly allow JFR dump creation into the case artifact directory.
+    /// Requires --java-deep and -m inv.
+    #[arg(long = "jfr-dump")]
+    jfr_dump: bool,
 }
 
 #[derive(Args)]
@@ -280,7 +292,11 @@ fn make_ctx(
     args: RunArgs,
 ) -> Result<CaseContext> {
     let mode = parse_mode(&args.mode)?;
-    let mut ctx = CaseContext::new(cfg, command, question, args.since, mode).with_output(args.out);
+    let mut ctx = CaseContext::new(cfg, command, question, args.since, mode)
+        .with_output(args.out)
+        .with_java_deep(args.java_deep || cfg.java_deep_enabled)
+        .with_java_heap_dump(args.heap_dump || cfg.java_heap_dump_enabled)
+        .with_java_jfr_dump(args.jfr_dump || cfg.java_jfr_dump_enabled);
     if args.no_ai {
         ctx = ctx.without_ai();
     }
@@ -336,6 +352,11 @@ fn handle_ai(cfg: &OiConfig, cmd: AiCmd) -> Result<()> {
                 "request_timeout_seconds: {}",
                 cfg.ai_request_timeout_seconds
             );
+            println!("java_deep_enabled: {}", cfg.java_deep_enabled);
+            println!("java_deep_requires_inv: {}", cfg.java_deep_requires_inv);
+            println!("java_heap_dump_enabled: {}", cfg.java_heap_dump_enabled);
+            println!("java_jfr_dump_enabled: {}", cfg.java_jfr_dump_enabled);
+            println!("java_deep_max_pids: {}", cfg.java_deep_max_pids);
         }
     }
     Ok(())
@@ -366,6 +387,14 @@ fn doctor(cfg: &OiConfig) -> Result<()> {
         cfg.ai_guardrail_baseline,
         cfg.ai_max_rounds,
         cfg.ai_max_actions_per_round
+    );
+    println!(
+        "java_deep: enabled={} requires_inv={} heap_dump={} jfr_dump={} max_pids={}",
+        cfg.java_deep_enabled,
+        cfg.java_deep_requires_inv,
+        cfg.java_heap_dump_enabled,
+        cfg.java_jfr_dump_enabled,
+        cfg.java_deep_max_pids
     );
     println!("os: {}", std::env::consts::OS);
     println!(

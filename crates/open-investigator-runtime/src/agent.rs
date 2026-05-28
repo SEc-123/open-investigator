@@ -230,13 +230,13 @@ fn initial_messages(ctx: &CaseContext) -> Vec<Value> {
 - 可疑 IP：优先 ioc/auth/web/net/proc/per。
 - 登录异常：优先 auth/acct/per/proc/net。
 - WebShell：优先 web/file/proc/net/java。
-- Java 内存马线索：优先 java/mem/web/proc/file/net；默认不要 heap dump，不要 attach，不要改 JVM。
+- Java 内存马线索：默认优先 java/mem/web/proc/file/net 做外围低扰动证据；如果 case 显式启用 java_deep=true 且工具目录包含 oi_java_deep，可以进一步做 JVM 内部诊断；只有显式启用 heap/JFR dump 时才可请求 oi_java_dump。
 - 通用主机异常：覆盖 auth/acct/proc/net/per/svc/web/java/file/deep。
 - 当你认为证据足以形成报告时，停止调用工具并输出最终中文调查结论。
 "#;
 
     let user = format!(
-        "case_id={case_id}\ncommand={command}\nmode={mode}\nsince={since}\nquestion={question}\nioc={ioc:?}\nweb_root={web_root:?}\npath={path:?}\n\n请使用工具自主调查。先判断最该查什么，再根据工具结果继续缩小范围。",
+        "case_id={case_id}\ncommand={command}\nmode={mode}\nsince={since}\nquestion={question}\nioc={ioc:?}\nweb_root={web_root:?}\npath={path:?}\njava_deep={java_deep}\njava_heap_dump={java_heap_dump}\njava_jfr_dump={java_jfr_dump}\n\n请使用工具自主调查。先判断最该查什么，再根据工具结果继续缩小范围。",
         case_id = ctx.case_id,
         command = ctx.command,
         mode = ctx.mode,
@@ -245,6 +245,9 @@ fn initial_messages(ctx: &CaseContext) -> Vec<Value> {
         ioc = &ctx.ioc,
         web_root = &ctx.web_root,
         path = &ctx.path,
+        java_deep = ctx.java_deep,
+        java_heap_dump = ctx.java_heap_dump,
+        java_jfr_dump = ctx.java_jfr_dump,
     );
 
     vec![

@@ -17,7 +17,7 @@ Open Investigator uses actual Chat Completions tool/function calls, not a loose 
 10. report.md and report.json are generated.
 ```
 
-## Tool names exposed to AI
+## Safe-mode tool names exposed to AI
 
 ```text
 oi_ioc_find
@@ -36,10 +36,19 @@ oi_hist_check
 oi_linux_deep
 oi_windows_deep
 oi_pkg_check
+```
+
+Investigator mode additionally exposes:
+
+```text
+oi_java_deep
+oi_java_dump
 oi_ro_run
 ```
 
-The internal dispatcher maps these to investigator actions such as `ioc.find`, `auth.check`, `proc.snap`, and `web.check`.
+The internal dispatcher maps these to investigator actions such as `ioc.find`, `auth.check`, `proc.snap`, `web.check`, `java.deep`, and `java.dump`.
+
+`oi_java_deep` and `oi_java_dump` are investigator-mode tools, but they are not enough by themselves: the case must explicitly enable `--java-deep`, and heavy artifacts additionally require `--heap-dump` or `--jfr-dump`.
 
 ## Why guardrails remain
 

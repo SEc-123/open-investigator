@@ -32,6 +32,8 @@ pub fn tool_specs(include_inv_tools: bool) -> Vec<ToolSpec> {
         ToolSpec { name: "web.check", args: r#"{"ip":"optional","root":"optional web root"}"#, description: "Analyze web logs, WebShell indicators, uploads, suspicious POSTs, web-root recent script/package changes.", inv_only: false },
         ToolSpec { name: "java.check", args: "{}", description: "Analyze Java process command lines, -javaagent/-agentlib/JDWP/Xbootclasspath, jps/jcmd metadata, Java memory-shell peripheral clues.", inv_only: false },
         ToolSpec { name: "mem.check", args: "{}", description: "Low-impact memory anomaly peripheral checks without heap/memory dump or invasive attach.", inv_only: false },
+        ToolSpec { name: "java.deep", args: r#"{"pid":"optional Java PID"}"#, description: "Explicitly enabled JVM internal inspection: thread stacks, class histogram, classloader stats, VM flags/properties, JFR status. Requires --java-deep and normally -m inv.", inv_only: true },
+        ToolSpec { name: "java.dump", args: r#"{"pid":"optional Java PID"}"#, description: "Explicitly enabled JVM artifact collection into the case directory: thread/class-histogram text artifacts plus optional heap/JFR dump. Requires --java-deep and --heap-dump or --jfr-dump.", inv_only: true },
         ToolSpec { name: "file.recent", args: r#"{"path":"optional root path"}"#, description: "Find recent suspicious file changes in temp, web roots, service directories, user/profile locations.", inv_only: false },
         ToolSpec { name: "container.check", args: "{}", description: "Collect local Docker/CRI/Kubernetes read-only evidence: containers, images, pods, logs metadata.", inv_only: false },
         ToolSpec { name: "hist.check", args: "{}", description: "Inspect shell/PowerShell history indicators with simple secret redaction.", inv_only: false },
@@ -39,6 +41,9 @@ pub fn tool_specs(include_inv_tools: bool) -> Vec<ToolSpec> {
         ToolSpec { name: "windows.deep", args: "{}", description: "Windows deep read-only checks: PowerShell logs, Sysmon, WMI persistence, Defender, Startup.", inv_only: false },
         ToolSpec { name: "pkg.check", args: "{}", description: "Collect lightweight package/program inventory with fallback diagnostics and suspicious admin/offensive/mining/tunnel tool matches.", inv_only: false },
     ];
+    if !include_inv_tools {
+        tools.retain(|tool| !tool.inv_only);
+    }
     if include_inv_tools {
         tools.push(ToolSpec { name: "ro.run", args: r#"{"command":"readonly command"}"#, description: "Investigator-mode fallback for a specific read-only OS command. It must pass policy and is fully audited.", inv_only: true });
     }
@@ -142,6 +147,9 @@ fn common_tool_parameters(tool: &str) -> Value {
     if tool == "ro.run" {
         properties.insert("command".to_string(), json!({"type":"string", "description":"A specific read-only OS command. It will be policy checked and audited."}));
     }
+    if matches!(tool, "java.deep" | "java.dump") {
+        properties.insert("pid".to_string(), json!({"type":"string", "description":"Optional target Java PID. If omitted, Open Investigator inspects a bounded set of Java PIDs."}));
+    }
     json!({
         "type": "object",
         "properties": properties,
@@ -161,6 +169,8 @@ pub fn normalize_tool_name(tool: &str) -> String {
         "oi_web_check" => "web.check".to_string(),
         "oi_java_check" => "java.check".to_string(),
         "oi_mem_check" => "mem.check".to_string(),
+        "oi_java_deep" => "java.deep".to_string(),
+        "oi_java_dump" => "java.dump".to_string(),
         "oi_file_recent" => "file.recent".to_string(),
         "oi_container_check" => "container.check".to_string(),
         "oi_hist_check" => "hist.check".to_string(),
@@ -177,6 +187,8 @@ pub fn normalize_tool_name(tool: &str) -> String {
         "service" | "services" | "service.snapshot" | "svc" => "svc.snap".to_string(),
         "web" | "webshell" | "web.analyze" => "web.check".to_string(),
         "java" | "jvm" | "java.analyze" => "java.check".to_string(),
+        "java.deep" | "jvm.deep" | "mem.inner" | "memory.inner" => "java.deep".to_string(),
+        "java.dump" | "jvm.dump" | "heap.dump" | "jfr.dump" => "java.dump".to_string(),
         "memory" | "mem" => "mem.check".to_string(),
         "file" | "recent_files" | "file.recent_changes" => "file.recent".to_string(),
         "container" | "docker" | "k8s" => "container.check".to_string(),
@@ -247,6 +259,12 @@ pub fn execute_tool_action(
         }
         "java.check" => collector::analyze_java(store, runner)?,
         "mem.check" => collector::memory_low_impact(store, runner)?,
+        "java.deep" => {
+            collector::analyze_java_deep(store, runner, ctx, arg_string(args, "pid").as_deref())?
+        }
+        "java.dump" => {
+            collector::java_dump_artifacts(store, runner, ctx, arg_string(args, "pid").as_deref())?
+        }
         "file.recent" => {
             let mut local = ctx.clone();
             if let Some(path) = arg_string(args, "path") {

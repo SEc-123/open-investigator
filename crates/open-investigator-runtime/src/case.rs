@@ -21,6 +21,14 @@ pub struct CaseContext {
     pub case_dir: PathBuf,
     pub output: Option<PathBuf>,
     pub ai_enabled: bool,
+    /// Explicitly allow JVM internal inspection for this case. This is off by default.
+    pub java_deep: bool,
+    /// Explicitly allow heap dump creation into the case artifact directory for this case.
+    pub java_heap_dump: bool,
+    /// Explicitly allow JFR dump creation into the case artifact directory for this case.
+    pub java_jfr_dump: bool,
+    pub java_deep_requires_inv: bool,
+    pub java_deep_max_pids: usize,
     pub started_at: DateTime<Utc>,
 }
 
@@ -47,6 +55,11 @@ impl CaseContext {
             case_dir,
             output: None,
             ai_enabled: cfg.ai_enabled,
+            java_deep: cfg.java_deep_enabled,
+            java_heap_dump: cfg.java_heap_dump_enabled,
+            java_jfr_dump: cfg.java_jfr_dump_enabled,
+            java_deep_requires_inv: cfg.java_deep_requires_inv,
+            java_deep_max_pids: cfg.java_deep_max_pids,
             started_at: Utc::now(),
         }
     }
@@ -75,6 +88,29 @@ impl CaseContext {
     pub fn without_ai(mut self) -> Self {
         self.ai_enabled = false;
         self
+    }
+
+    pub fn with_java_deep(mut self, enabled: bool) -> Self {
+        self.java_deep = enabled;
+        self
+    }
+
+    pub fn with_java_heap_dump(mut self, enabled: bool) -> Self {
+        self.java_heap_dump = enabled;
+        self
+    }
+
+    pub fn with_java_jfr_dump(mut self, enabled: bool) -> Self {
+        self.java_jfr_dump = enabled;
+        self
+    }
+
+    pub fn java_deep_allowed(&self) -> bool {
+        self.java_deep
+    }
+
+    pub fn java_artifacts_allowed(&self) -> bool {
+        self.java_heap_dump || self.java_jfr_dump
     }
 
     pub fn prepare(&self) -> Result<()> {

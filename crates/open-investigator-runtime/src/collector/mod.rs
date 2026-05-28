@@ -11,7 +11,7 @@ use crate::util::{
 use anyhow::Result;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 pub fn collect_host_profile(
@@ -975,7 +975,7 @@ pub fn analyze_java(store: &mut EvidenceStore, runner: &mut CommandRunner) -> Re
         category: "java".to_string(),
         source: "java.check limitation".to_string(),
         title: "Java 内存马调查边界".to_string(),
-        summary: "本工具默认只做只读低扰动检查：进程参数、JVM 列表、Web/中间件日志、近期 JSP/JAR/WAR/CLASS 变化。Filter/Listener/Interceptor 型内存马的最终确认通常需要线程栈、类加载器、堆对象或应用框架路由表证据；默认不写 heap dump。".to_string(),
+        summary: "默认 java.check 只做低扰动外围检查：进程参数、JVM 列表、Web/中间件日志、近期 JSP/JAR/WAR/CLASS 变化。需要进一步确认 Filter/Listener/Interceptor/Controller 型内存马时，可显式启用 --java-deep 进入 JVM 内部诊断；需要 heap/JFR 证据时还必须额外启用 --heap-dump 或 --jfr-dump，默认不开启。".to_string(),
         raw_excerpt: None,
         tags: vec!["java_memshell_gap".to_string(), "evidence_gap".to_string()],
         severity: Severity::Info,
@@ -1536,6 +1536,547 @@ pub fn memory_low_impact_without_java(
         confidence: Confidence::High,
     })?;
     Ok(())
+}
+
+/// Deep JVM internal inspection for Java memory-shell investigations.
+///
+/// This collector is intentionally gated by CaseContext. It can attach to the
+/// target JVM with jcmd/jstack/jmap and may have operational impact, so it is
+/// never enabled by default. It does not create heap/JFR dump files; artifact
+/// creation is handled separately by `java_dump_artifacts` and requires an
+/// additional explicit flag.
+pub fn analyze_java_deep(
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+    ctx: &CaseContext,
+    pid_filter: Option<&str>,
+) -> Result<()> {
+    if !ctx.java_deep_allowed() {
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "java".to_string(),
+            source: "java.deep gate".to_string(),
+            title: "JVM 内部诊断未启用".to_string(),
+            summary:
+                "java.deep 已被请求，但当前 case 未显式开启 --java-deep；默认只执行低扰动外围检查。"
+                    .to_string(),
+            raw_excerpt: None,
+            tags: vec!["java_deep_disabled".to_string(), "safety_gate".to_string()],
+            severity: Severity::Info,
+            confidence: Confidence::High,
+        })?;
+        return Ok(());
+    }
+    if ctx.java_deep_requires_inv && !ctx.mode.allows_readonly_shell() {
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "java".to_string(),
+            source: "java.deep gate".to_string(),
+            title: "JVM 内部诊断需要 investigator 模式".to_string(),
+            summary:
+                "java.deep 需要 -m inv，以避免 safe 模式下对生产 JVM 进行 attach/jcmd 级别检查。"
+                    .to_string(),
+            raw_excerpt: None,
+            tags: vec![
+                "java_deep_requires_inv".to_string(),
+                "safety_gate".to_string(),
+            ],
+            severity: Severity::Low,
+            confidence: Confidence::High,
+        })?;
+        return Ok(());
+    }
+
+    let pids = java_target_pids(store, runner, pid_filter, ctx.java_deep_max_pids)?;
+    if pids.is_empty() {
+        store.add(EvidenceDraft::info(
+            "java",
+            "java.deep",
+            "JVM 内部诊断",
+            "未发现可用于深度 JVM 诊断的 Java PID",
+        ))?;
+        return Ok(());
+    }
+
+    let mut inspected = 0usize;
+    for pid in pids {
+        inspected += 1;
+        if command_exists("jcmd") {
+            run_jvm_internal_probe(
+                store,
+                runner,
+                &pid,
+                "Thread.print -l",
+                "线程栈与锁信息",
+                &[
+                    "ApplicationFilterChain",
+                    "javax.servlet",
+                    "jakarta.servlet",
+                    "Filter",
+                    "Listener",
+                    "Interceptor",
+                    "Controller",
+                    "ClassLoader",
+                    "defineClass",
+                    "TemplatesImpl",
+                    "bcel",
+                    "ognl",
+                    "Unsafe",
+                    "behinder",
+                    "godzilla",
+                    "rebeyond",
+                    "cmd.exe",
+                    "/bin/sh",
+                    "powershell",
+                ],
+            )?;
+            run_jvm_internal_probe(
+                store,
+                runner,
+                &pid,
+                "GC.class_histogram",
+                "堆类直方图",
+                &[
+                    "Filter",
+                    "Servlet",
+                    "Listener",
+                    "Interceptor",
+                    "Controller",
+                    "ClassLoader",
+                    "TemplatesImpl",
+                    "BCEL",
+                    "CGLIB",
+                    "Enhancer",
+                    "Proxy",
+                    "groovy",
+                    "ognl",
+                    "springframework",
+                    "catalina",
+                ],
+            )?;
+            run_jvm_internal_probe(
+                store,
+                runner,
+                &pid,
+                "VM.classloader_stats",
+                "ClassLoader 统计",
+                &[
+                    "WebappClassLoader",
+                    "LaunchedURLClassLoader",
+                    "URLClassLoader",
+                    "ClassLoader",
+                    "catalina",
+                    "springframework",
+                ],
+            )?;
+            run_jvm_internal_probe(
+                store,
+                runner,
+                &pid,
+                "VM.system_properties",
+                "JVM 系统属性",
+                &[
+                    "java.class.path",
+                    "java.library.path",
+                    "catalina.base",
+                    "weblogic",
+                    "jetty",
+                    "spring",
+                    "tomcat",
+                ],
+            )?;
+            run_jvm_internal_probe(
+                store,
+                runner,
+                &pid,
+                "VM.flags",
+                "JVM flags",
+                &[
+                    "EnableDynamicAgentLoading",
+                    "DisableAttachMechanism",
+                    "TraceClassLoading",
+                    "FlightRecorder",
+                ],
+            )?;
+            run_jvm_internal_probe(
+                store,
+                runner,
+                &pid,
+                "JFR.check",
+                "JFR 状态",
+                &["Recording", "running", "duration", "settings"],
+            )?;
+        } else {
+            if command_exists("jstack") {
+                let out =
+                    runner.run_builtin(store, &format!("jstack -l {pid}"), "java deep jstack")?;
+                record_java_internal_output(
+                    store,
+                    &pid,
+                    "jstack -l",
+                    "线程栈与锁信息",
+                    &out.stdout,
+                    &out.stderr,
+                    &[
+                        "ApplicationFilterChain",
+                        "javax.servlet",
+                        "jakarta.servlet",
+                        "Filter",
+                        "Listener",
+                        "Interceptor",
+                        "ClassLoader",
+                        "defineClass",
+                        "TemplatesImpl",
+                        "behinder",
+                        "godzilla",
+                        "cmd.exe",
+                        "/bin/sh",
+                    ],
+                )?;
+            }
+            if command_exists("jmap") {
+                let out = runner.run_builtin(
+                    store,
+                    &format!("jmap -histo {pid}"),
+                    "java deep jmap histogram",
+                )?;
+                record_java_internal_output(
+                    store,
+                    &pid,
+                    "jmap -histo",
+                    "堆类直方图",
+                    &out.stdout,
+                    &out.stderr,
+                    &[
+                        "Filter",
+                        "Servlet",
+                        "Listener",
+                        "Interceptor",
+                        "Controller",
+                        "ClassLoader",
+                        "TemplatesImpl",
+                        "BCEL",
+                        "CGLIB",
+                    ],
+                )?;
+            }
+        }
+    }
+
+    store.add(EvidenceDraft {
+        event_time: None,
+        category: "java".to_string(),
+        source: "java.deep summary".to_string(),
+        title: "JVM 内部诊断已完成".to_string(),
+        summary: format!("已对 {inspected} 个 Java PID 执行显式启用的 JVM 内部诊断。该能力会 attach 到目标 JVM，默认关闭；本次仅收集文本型诊断输出，不创建 heap/JFR dump，除非另外启用 java.dump。"),
+        raw_excerpt: None,
+        tags: vec!["java_deep".to_string(), "jvm_internal".to_string()],
+        severity: Severity::Info,
+        confidence: Confidence::High,
+    })?;
+    Ok(())
+}
+
+/// Explicit JVM artifact collection. This may create large files and can have
+/// operational impact; it is gated by --java-deep plus --heap-dump/--jfr-dump.
+pub fn java_dump_artifacts(
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+    ctx: &CaseContext,
+    pid_filter: Option<&str>,
+) -> Result<()> {
+    if !ctx.java_deep_allowed() || !ctx.java_artifacts_allowed() {
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "java".to_string(),
+            source: "java.dump gate".to_string(),
+            title: "JVM 重型证据采集未启用".to_string(),
+            summary:
+                "java.dump 需要显式开启 --java-deep，并至少开启 --heap-dump 或 --jfr-dump。默认不创建 JVM dump。"
+                    .to_string(),
+            raw_excerpt: None,
+            tags: vec!["java_dump_disabled".to_string(), "safety_gate".to_string()],
+            severity: Severity::Info,
+            confidence: Confidence::High,
+        })?;
+        return Ok(());
+    }
+    if ctx.java_deep_requires_inv && !ctx.mode.allows_readonly_shell() {
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "java".to_string(),
+            source: "java.dump gate".to_string(),
+            title: "JVM 重型证据采集需要 investigator 模式".to_string(),
+            summary: "heap/JFR dump 可能影响生产 JVM，必须使用 -m inv 并显式开启对应开关。"
+                .to_string(),
+            raw_excerpt: None,
+            tags: vec![
+                "java_dump_requires_inv".to_string(),
+                "safety_gate".to_string(),
+            ],
+            severity: Severity::Low,
+            confidence: Confidence::High,
+        })?;
+        return Ok(());
+    }
+    if !command_exists("jcmd") {
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "java".to_string(),
+            source: "java.dump".to_string(),
+            title: "缺少 jcmd，无法创建 JVM artifact".to_string(),
+            summary: "未发现 jcmd；无法执行 GC.heap_dump 或 JFR.dump。".to_string(),
+            raw_excerpt: None,
+            tags: vec!["java_dump_missing_jcmd".to_string()],
+            severity: Severity::Low,
+            confidence: Confidence::High,
+        })?;
+        return Ok(());
+    }
+
+    let pids = java_target_pids(store, runner, pid_filter, ctx.java_deep_max_pids)?;
+    for pid in pids {
+        let artifact_dir = ctx.case_dir.join("artifacts").join("jvm").join(&pid);
+        fs::create_dir_all(&artifact_dir)?;
+
+        let thread_out = runner.run_builtin(
+            store,
+            &format!("jcmd {pid} Thread.print -l"),
+            "java artifact thread print",
+        )?;
+        let thread_path = artifact_dir.join("thread-print.txt");
+        write_artifact_text(&thread_path, &thread_out.stdout)?;
+        add_artifact_evidence(
+            store,
+            &pid,
+            "thread-print",
+            &thread_path,
+            "JVM thread dump text artifact written to case directory",
+        )?;
+
+        let hist_out = runner.run_builtin(
+            store,
+            &format!("jcmd {pid} GC.class_histogram"),
+            "java artifact class histogram",
+        )?;
+        let hist_path = artifact_dir.join("class-histogram.txt");
+        write_artifact_text(&hist_path, &hist_out.stdout)?;
+        add_artifact_evidence(
+            store,
+            &pid,
+            "class-histogram",
+            &hist_path,
+            "JVM class histogram text artifact written to case directory",
+        )?;
+
+        if ctx.java_heap_dump {
+            let heap_path = artifact_dir.join("heap.hprof");
+            let cmd = format!("jcmd {pid} GC.heap_dump {}", shell_quote_path(&heap_path));
+            let out = runner.run_diagnostic_artifact(store, &cmd, "explicit JVM heap dump")?;
+            store.add(EvidenceDraft {
+                event_time: None,
+                category: "java".to_string(),
+                source: cmd,
+                title: format!("JVM {pid} heap dump artifact"),
+                summary: format!(
+                    "显式开启 --heap-dump 后创建 heap dump；exit={:?} path={}",
+                    out.exit_code,
+                    heap_path.display()
+                ),
+                raw_excerpt: Some(truncate_text(
+                    &format!("stdout:\n{}\nstderr:\n{}", out.stdout, out.stderr),
+                    8_000,
+                )),
+                tags: vec![
+                    "java_heap_dump".to_string(),
+                    "artifact".to_string(),
+                    "high_impact".to_string(),
+                ],
+                severity: Severity::High,
+                confidence: Confidence::High,
+            })?;
+        }
+
+        if ctx.java_jfr_dump {
+            let jfr_path = artifact_dir.join("recording.jfr");
+            let check = runner.run_builtin(
+                store,
+                &format!("jcmd {pid} JFR.check"),
+                "java JFR check before dump",
+            )?;
+            let cmd = format!(
+                "jcmd {pid} JFR.dump filename={}",
+                shell_quote_path(&jfr_path)
+            );
+            let out = runner.run_diagnostic_artifact(store, &cmd, "explicit JVM JFR dump")?;
+            store.add(EvidenceDraft {
+                event_time: None,
+                category: "java".to_string(),
+                source: cmd,
+                title: format!("JVM {pid} JFR dump artifact"),
+                summary: format!(
+                    "显式开启 --jfr-dump 后尝试导出 JFR；exit={:?} path={}",
+                    out.exit_code,
+                    jfr_path.display()
+                ),
+                raw_excerpt: Some(truncate_text(
+                    &format!(
+                        "JFR.check:\n{}\nstdout:\n{}\nstderr:\n{}",
+                        check.stdout, out.stdout, out.stderr
+                    ),
+                    10_000,
+                )),
+                tags: vec![
+                    "java_jfr_dump".to_string(),
+                    "artifact".to_string(),
+                    "high_impact".to_string(),
+                ],
+                severity: Severity::Medium,
+                confidence: Confidence::Medium,
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn java_target_pids(
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+    pid_filter: Option<&str>,
+    max_pids: usize,
+) -> Result<Vec<String>> {
+    if let Some(pid) = pid_filter.map(str::trim).filter(|pid| !pid.is_empty()) {
+        if pid.chars().all(|ch| ch.is_ascii_digit()) {
+            return Ok(vec![pid.to_string()]);
+        }
+        store.add(EvidenceDraft {
+            event_time: None,
+            category: "java".to_string(),
+            source: "java pid filter".to_string(),
+            title: "忽略非法 Java PID 参数".to_string(),
+            summary: format!("PID `{pid}` 不是纯数字，已忽略。"),
+            raw_excerpt: None,
+            tags: vec!["java_pid_invalid".to_string()],
+            severity: Severity::Low,
+            confidence: Confidence::High,
+        })?;
+    }
+    let proc_cmd = if cfg!(windows) {
+        "Get-CimInstance Win32_Process | Where-Object {$_.Name -like '*java*'} | Select-Object ProcessId,Name,CommandLine"
+    } else if cfg!(target_os = "macos") {
+        "ps -axo pid,ppid,user,lstart,etime,comm,args"
+    } else {
+        "ps -eo pid,ppid,user,lstart,etime,comm,args --cols 260"
+    };
+    let out = runner.run_builtin(store, proc_cmd, "java pid discovery")?;
+    let java_lines = java_process_lines(&out.stdout).join("\n");
+    let mut pids = extract_pids_from_java_output(&java_lines);
+    pids.sort();
+    pids.dedup();
+    pids.truncate(max_pids.max(1));
+    Ok(pids)
+}
+
+fn run_jvm_internal_probe(
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+    pid: &str,
+    jcmd_action: &str,
+    title: &str,
+    keywords: &[&str],
+) -> Result<()> {
+    let cmd = format!("jcmd {pid} {jcmd_action}");
+    let out = runner.run_builtin(store, &cmd, title)?;
+    record_java_internal_output(
+        store,
+        pid,
+        jcmd_action,
+        title,
+        &out.stdout,
+        &out.stderr,
+        keywords,
+    )
+}
+
+fn record_java_internal_output(
+    store: &mut EvidenceStore,
+    pid: &str,
+    source: &str,
+    title: &str,
+    stdout: &str,
+    stderr: &str,
+    keywords: &[&str],
+) -> Result<()> {
+    if stdout.trim().is_empty() && stderr.trim().is_empty() {
+        return Ok(());
+    }
+    let raw = format!("stdout:\n{stdout}\nstderr:\n{stderr}");
+    let hits = suspicious_lines(stdout, keywords, 80);
+    store.add(EvidenceDraft {
+        event_time: None,
+        category: "java".to_string(),
+        source: format!("java.deep pid={pid} {source}"),
+        title: format!("JVM {pid} {title}"),
+        summary: format!(
+            "JVM 内部诊断 `{source}` 完成；可疑/需复核关键词样本 {} 条",
+            hits.len()
+        ),
+        raw_excerpt: Some(truncate_text(
+            &if hits.is_empty() {
+                raw
+            } else {
+                hits.join("\n")
+            },
+            20_000,
+        )),
+        tags: vec!["java_deep".to_string(), "jvm_internal".to_string()],
+        severity: if hits.is_empty() {
+            Severity::Info
+        } else {
+            Severity::High
+        },
+        confidence: Confidence::Medium,
+    })?;
+    Ok(())
+}
+
+fn write_artifact_text(path: &Path, value: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = File::create(path)?;
+    file.write_all(value.as_bytes())?;
+    Ok(())
+}
+
+fn add_artifact_evidence(
+    store: &mut EvidenceStore,
+    pid: &str,
+    artifact: &str,
+    path: &Path,
+    summary: &str,
+) -> Result<()> {
+    store.add(EvidenceDraft {
+        event_time: None,
+        category: "java".to_string(),
+        source: path.display().to_string(),
+        title: format!("JVM {pid} {artifact} artifact"),
+        summary: summary.to_string(),
+        raw_excerpt: Some(path.display().to_string()),
+        tags: vec!["java_artifact".to_string(), artifact.to_string()],
+        severity: Severity::Info,
+        confidence: Confidence::High,
+    })?;
+    Ok(())
+}
+
+fn shell_quote_path(path: &Path) -> String {
+    let raw = path.display().to_string();
+    if cfg!(windows) {
+        format!("\"{}\"", raw.replace('"', ""))
+    } else {
+        format!("'{}'", raw.replace('\'', "'\\''"))
+    }
 }
 
 pub fn record_readonly_command_output(

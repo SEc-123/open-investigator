@@ -50,7 +50,7 @@ oi_auth_check -> auth.check
 
 It then executes bounded collectors, writes evidence, and returns the evidence summary as tool observations.
 
-## AI-visible tools
+## Safe-mode AI-visible tools
 
 ```text
 oi_ioc_find
@@ -69,10 +69,19 @@ oi_hist_check
 oi_linux_deep
 oi_windows_deep
 oi_pkg_check
+```
+
+Investigator mode additionally exposes:
+
+```text
+oi_java_deep
+oi_java_dump
 oi_ro_run
 ```
 
-`oi_ro_run` is present only in investigator mode and is still policy-filtered.
+`oi_java_deep` and `oi_java_dump` are still gated by the case flags: `--java-deep` for internal JVM diagnostics, and `--heap-dump` or `--jfr-dump` for heavy artifacts.
+
+`oi_ro_run` is present only in investigator mode and is still policy-filtered. It cannot be used to bypass the JVM dump gates.
 
 ## Guardrail baseline
 

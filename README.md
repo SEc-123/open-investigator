@@ -52,6 +52,8 @@ oi_svc_snap
 oi_web_check
 oi_java_check
 oi_mem_check
+oi_java_deep       # only in investigator mode and explicit --java-deep
+oi_java_dump       # only when --java-deep plus --heap-dump/--jfr-dump is enabled
 oi_file_recent
 oi_container_check
 oi_hist_check
@@ -157,11 +159,22 @@ oi web -s 14d
 oi web --root /var/www/html -s 14d
 ```
 
-Java anomaly / memory-shell peripheral evidence:
+Java anomaly / memory-shell investigation:
 
 ```bash
+# Default: low-impact peripheral evidence only.
 oi java -s 14d
 oi mem -s 14d
+
+# JVM internal inspection: thread stacks, class histogram, classloader stats,
+# VM flags/properties, and JFR status. This may attach to target JVMs, so it is explicit.
+oi mem -s 14d -m inv --java-deep
+oi java -s 14d -m inv --java-deep
+
+# Heavy artifacts: write heap/JFR artifacts under .oi/cases/<case-id>/artifacts/jvm/<pid>/.
+# Disabled by default; use only when operationally approved.
+oi mem -s 14d -m inv --java-deep --heap-dump
+oi mem -s 14d -m inv --java-deep --jfr-dump
 ```
 
 Persistence:
@@ -232,7 +245,15 @@ Default mode is `safe`:
 
 Run with appropriate read permissions for the host. Some logs require administrator/root rights to read, but the runtime remains logically read-only: it writes only case artifacts and command audit records.
 
-For Java memory-shell investigations, `oi` intentionally performs low-impact peripheral checks by default. It does not heap dump or attach to production JVMs automatically. If evidence indicates possible in-memory compromise, the report will list the evidence gap and recommend manual confirmation using approved operational procedures.
+For Java memory-shell investigations, `oi` intentionally performs low-impact peripheral checks by default. It does not heap dump or attach to production JVMs automatically.
+
+When deeper evidence is required, the capability exists but must be explicitly enabled:
+
+- `--java-deep` enables JVM internal inspection such as `Thread.print`, class histogram, classloader stats, VM flags/properties, and JFR status. This can attach to target JVMs and normally requires `-m inv`.
+- `--heap-dump` writes a heap dump into the case artifact directory. It requires `--java-deep`.
+- `--jfr-dump` attempts to export an existing JFR recording into the case artifact directory. It requires `--java-deep`.
+
+Ordinary `oi sh` / `oi_ro_run` cannot bypass these gates to create heap or JFR dumps; JVM dump commands are blocked by policy and must use the explicit collectors.
 
 ## Responsible disclosure
 

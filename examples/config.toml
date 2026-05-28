@@ -28,3 +28,11 @@ ai_context_char_limit = 36000
 ai_planning_temperature = 0.1
 ai_synthesis_temperature = 0.2
 ai_request_timeout_seconds = 90
+
+# JVM / Java memory-shell deep investigation gates.
+# Defaults are intentionally conservative for production safety.
+java_deep_enabled = false
+java_deep_requires_inv = true
+java_heap_dump_enabled = false
+java_jfr_dump_enabled = false
+java_deep_max_pids = 3

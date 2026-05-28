@@ -186,6 +186,7 @@ fn run_deterministic_guardrail(
             run_tool("java.check", coverage, scope, || {
                 collector::analyze_java(store, runner)
             })?;
+            maybe_run_java_deep(ctx, store, runner, coverage, scope)?;
             run_tool("proc.snap", coverage, scope, || {
                 collector::snapshot_processes(store, runner)
             })?;
@@ -203,6 +204,7 @@ fn run_deterministic_guardrail(
             run_tool("mem.check", coverage, scope, || {
                 collector::memory_low_impact_without_java(store, runner)
             })?;
+            maybe_run_java_deep(ctx, store, runner, coverage, scope)?;
             run_tool("web.check", coverage, scope, || {
                 collector::analyze_web(store, sources, ctx)
             })?;
@@ -220,6 +222,7 @@ fn run_deterministic_guardrail(
             run_tool("mem.check", coverage, scope, || {
                 collector::memory_low_impact(store, runner)
             })?;
+            maybe_run_java_deep(ctx, store, runner, coverage, scope)?;
             run_tool("proc.snap", coverage, scope, || {
                 collector::snapshot_processes(store, runner)
             })?;
@@ -329,6 +332,7 @@ fn run_default_guardrail(
     run_tool("mem.check", coverage, scope, || {
         collector::memory_low_impact(store, runner)
     })?;
+    maybe_run_java_deep(ctx, store, runner, coverage, scope)?;
     run_tool("svc.snap", coverage, scope, || {
         collector::snapshot_services(store, runner)
     })?;
@@ -350,6 +354,26 @@ fn run_default_guardrail(
     run_tool("file.recent", coverage, scope, || {
         collector::recent_files(store, ctx)
     })?;
+    Ok(())
+}
+
+fn maybe_run_java_deep(
+    ctx: &CaseContext,
+    store: &mut EvidenceStore,
+    runner: &mut CommandRunner,
+    coverage: &mut HashSet<String>,
+    scope: &mut Vec<String>,
+) -> Result<()> {
+    if ctx.java_deep {
+        run_tool("java.deep", coverage, scope, || {
+            collector::analyze_java_deep(store, runner, ctx, None)
+        })?;
+    }
+    if ctx.java_artifacts_allowed() {
+        run_tool("java.dump", coverage, scope, || {
+            collector::java_dump_artifacts(store, runner, ctx, None)
+        })?;
+    }
     Ok(())
 }
 

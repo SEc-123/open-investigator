@@ -49,6 +49,25 @@ impl CommandRunner {
         self.execute(store, command, reason, decision)
     }
 
+    /// Run an explicitly opted-in JVM diagnostic artifact command.
+    ///
+    /// This is intentionally not exposed to the AI as a raw shell primitive. It is
+    /// used only by gated Open Investigator collectors after the user enables
+    /// deep JVM artifact collection for the case.
+    pub fn run_diagnostic_artifact(
+        &mut self,
+        store: &EvidenceStore,
+        command: &str,
+        reason: &str,
+    ) -> Result<ToolRunOutput> {
+        self.execute(
+            store,
+            command,
+            reason,
+            PolicyDecision::allow("explicitly enabled diagnostic artifact command"),
+        )
+    }
+
     fn execute(
         &mut self,
         store: &EvidenceStore,

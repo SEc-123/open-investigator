@@ -11,6 +11,7 @@ use std::path::PathBuf;
 /// surface, calls only `oi_*` investigation tools, observes structured evidence,
 /// and continues the same tool loop until it can produce a report.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct OiConfig {
     /// Default model for both planning and synthesis unless overridden below.
     pub model: String,
@@ -51,6 +52,18 @@ pub struct OiConfig {
     pub ai_synthesis_temperature: f32,
     /// HTTP timeout for AI provider requests.
     pub ai_request_timeout_seconds: u64,
+    /// Enable JVM internal inspection tools such as Thread.print, class histogram,
+    /// class-loader stats, VM flags, and system properties. Disabled by default
+    /// because jcmd attaches to the target JVM and may have operational impact.
+    pub java_deep_enabled: bool,
+    /// Require investigator mode (`-m inv`) before running JVM internal inspection.
+    pub java_deep_requires_inv: bool,
+    /// Permit JVM heap dump creation into the case artifact directory. Disabled by default.
+    pub java_heap_dump_enabled: bool,
+    /// Permit JFR dump creation when an existing recording is present. Disabled by default.
+    pub java_jfr_dump_enabled: bool,
+    /// Maximum Java PIDs inspected during deep JVM investigation.
+    pub java_deep_max_pids: usize,
 }
 
 impl Default for OiConfig {
@@ -79,6 +92,11 @@ impl Default for OiConfig {
             ai_planning_temperature: 0.1,
             ai_synthesis_temperature: 0.2,
             ai_request_timeout_seconds: 90,
+            java_deep_enabled: false,
+            java_deep_requires_inv: true,
+            java_heap_dump_enabled: false,
+            java_jfr_dump_enabled: false,
+            java_deep_max_pids: 3,
         }
     }
 }

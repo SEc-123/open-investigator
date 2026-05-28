@@ -22,6 +22,7 @@ oi ip 1.2.3.4 -s 7d
 oi web -s 14d
 oi java -s 14d
 oi mem -s 14d
+oi mem -s 14d -m inv --java-deep
 oi per
 oi ps
 oi net
@@ -50,3 +51,19 @@ oi sh "journalctl --since '7 days ago' | grep 1.2.3.4" -m inv
 ```
 
 Dangerous commands are denied and audited.
+
+## Java memory-shell depth
+
+Default `oi java` and `oi mem` stay low-impact. JVM internal inspection requires an explicit gate:
+
+```bash
+oi java -s 14d -m inv --java-deep
+oi mem -s 14d -m inv --java-deep
+```
+
+Heap/JFR artifacts require an additional explicit flag and are written under `.oi/cases/<case-id>/artifacts/jvm/<pid>/`:
+
+```bash
+oi mem -s 14d -m inv --java-deep --heap-dump
+oi mem -s 14d -m inv --java-deep --jfr-dump
+```

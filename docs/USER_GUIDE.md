@@ -59,22 +59,56 @@ Example AI tool call:
 }
 ```
 
-The AI can call:
+In safe mode, the AI can call:
 
 ```text
 oi_ioc_find, oi_auth_check, oi_acct_snap, oi_proc_snap, oi_net_snap,
 oi_per_snap, oi_svc_snap, oi_web_check, oi_java_check, oi_mem_check,
-oi_file_recent, oi_container_check, oi_hist_check, oi_linux_deep,
-oi_windows_deep, oi_pkg_check
+oi_file_recent, oi_container_check, oi_hist_check, oi_linux_deep, oi_windows_deep,
+oi_pkg_check
 ```
 
 In `-m inv` mode only, it may also call:
 
 ```text
+oi_java_deep, oi_java_dump,
 oi_ro_run
 ```
 
-`ro.run` is still policy checked and audited.
+`oi_java_deep` and `oi_java_dump` still require their explicit case flags. `ro.run` is still policy checked and audited.
+
+### Java memory-shell deep investigation
+
+Default Java investigation is intentionally low-impact:
+
+```bash
+oi java -s 14d
+oi mem -s 14d
+```
+
+For internal JVM inspection, explicitly enable deep mode and investigator mode:
+
+```bash
+oi mem -s 14d -m inv --java-deep
+oi java -s 14d -m inv --java-deep
+```
+
+This collects JVM-internal evidence such as thread stacks, class histogram, classloader statistics, VM flags/properties, and JFR status.
+
+Heavy artifacts are disabled by default. Use only with operational approval:
+
+```bash
+oi mem -s 14d -m inv --java-deep --heap-dump
+oi mem -s 14d -m inv --java-deep --jfr-dump
+```
+
+Artifacts are written under:
+
+```text
+.oi/cases/<case-id>/artifacts/jvm/<pid>/
+```
+
+Ordinary `oi sh` / `oi_ro_run` cannot bypass these gates to run heap/JFR dump commands.
 
 ## 4. Common workflows
 
@@ -122,16 +156,17 @@ oi web --ip 1.2.3.4 -s 14d
 
 Looks for suspicious web requests, POST/upload activity, command-execution keywords, recently modified web files, and process/network context.
 
-### Java and memory-shell peripheral investigation
+### Java and memory-shell investigation
 
 ```bash
 oi java -s 14d
 oi mem -s 14d
+oi mem -s 14d -m inv --java-deep
 ```
 
-Checks Java processes, JVM options, `-javaagent`, `-agentlib`, JDWP, `Xbootclasspath`, `jps`, `jcmd`, suspicious JAR/WAR/CLASS/JSP changes, and memory-shell evidence gaps.
+Default checks cover Java processes, JVM options, `-javaagent`, `-agentlib`, JDWP, `Xbootclasspath`, `jps`, `jcmd VM.command_line`, suspicious JAR/WAR/CLASS/JSP changes, and memory-shell evidence gaps.
 
-It does **not** perform heap dump or invasive attach by default.
+With `--java-deep -m inv`, `oi` adds JVM internal diagnostics. It does **not** perform heap/JFR dumps unless `--heap-dump` or `--jfr-dump` is also explicitly set.
 
 ### Persistence
 
@@ -243,5 +278,6 @@ Expected result: read-only commands allowed; modifying/destructive commands deni
 - If there is a concrete IP, run `oi ip <ip> -s 7d`.
 - For web hosts, run `oi web -s 14d` and include `--root` if known.
 - For Java application hosts, run `oi java -s 14d` and `oi mem -s 14d`.
+- For approved JVM internal review, rerun with `-m inv --java-deep`; use `--heap-dump` or `--jfr-dump` only when explicitly approved.
 - Use `-m inv` only when sealed tools are not enough.
 - Preserve `.oi/cases/<case-id>` as part of the incident record.
