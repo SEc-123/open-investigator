@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Open Investigator mark</title>
+  <desc id="desc">Arvanta Cyber Open Investigator product mark.</desc>
+  <rect width="128" height="128" rx="24" fill="#101820"/>
+  <path d="M31 38c0-6.627 5.373-12 12-12h42c6.627 0 12 5.373 12 12v52c0 6.627-5.373 12-12 12H43c-6.627 0-12-5.373-12-12V38z" fill="#f7fafc"/>
+  <path d="M45 46h38M45 60h38M45 74h20" stroke="#1769e8" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="77" cy="75" r="17" fill="none" stroke="#19c6ae" stroke-width="7"/>
+  <path d="M90 88l16 16" stroke="#19c6ae" stroke-width="9" stroke-linecap="round"/>
+</svg>
