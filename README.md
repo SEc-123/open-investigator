@@ -21,6 +21,10 @@ Open Investigator is maintained by **Arvanta Cyber Inc**.
 
 This repository is the open-source edition. Issues and pull requests are welcome for read-only collection coverage, AI tool-loop behavior, report quality, platform compatibility, and documentation.
 
+Community launch materials and reusable promotion notes live in
+[`docs/promotion`](docs/promotion/README.md). They include the technical article,
+Show HN/Product Hunt/Reddit/LinkedIn/X drafts, and the weekly community loop.
+
 ## Product boundary
 
 This repository contains only the Open Investigator product surface:

@@ -1,0 +1,28 @@
+{
+  "product": "Open Investigator",
+  "website": "https://www.arvantacyber.com/open-investigator/",
+  "source": "https://github.com/SEc-123/open-investigator",
+  "feedback_email": "oi@arvantacyber.com",
+  "license": "Apache-2.0",
+  "assets": {
+    "mark": "assets/open-investigator-mark.svg",
+    "launch_kit": "docs/promotion/README.md",
+    "long_article": "docs/promotion/article-ai-server-incident-response.md",
+    "community_posts": "docs/promotion/community-posts.md",
+    "reusable_playbook": "docs/promotion/reusable-promotion-playbook.md"
+  },
+  "primary_channels": [
+    "Hacker News",
+    "Reddit",
+    "LinkedIn",
+    "X",
+    "Product Hunt",
+    "open-source directories"
+  ],
+  "readiness": {
+    "show_hn": "ready after maintainer confirms same-day comment coverage",
+    "product_hunt": "needs personal maker account, screenshots, and demo video",
+    "reddit": "needs subreddit rule review and moderator check where unclear",
+    "linkedin_x": "ready"
+  }
+}
