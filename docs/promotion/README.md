@@ -47,6 +47,8 @@ Not the audience:
 - Feedback: oi@arvantacyber.com
 - License: Apache-2.0
 - Product mark: `assets/open-investigator-mark.svg`
+- Community scale plan: `docs/promotion/community-scale-plan.md`
+- External entry status: `docs/promotion/external-entry-status.md`
 
 ## Search landing pages
 
@@ -64,6 +66,14 @@ details.
 | Windows host triage | https://www.arvantacyber.com/open-investigator/windows-host-investigation/ |
 | SIEM/SOAR/EDR boundary | https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/ |
 | Evidence-backed DFIR reports | https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/ |
+
+## Article assets
+
+- `article-ai-server-incident-response.md`: broad introduction and walkthrough.
+- `article-suspicious-ip-linux-triage.md`: practical suspicious-IP Linux triage
+  article for search and community reuse.
+- `article-ai-incident-tool-safety-boundary.md`: discussion article about the
+  read-only AI investigation boundary.
 
 ## Message pillars
 
@@ -168,6 +178,19 @@ Secondary CTA:
 ```text
 Read the safety model and send feedback or collector ideas.
 ```
+
+## Scaled promotion assets
+
+Use `community-scale-plan.md` as the operating plan after the first launch
+assets are ready. It contains:
+
+- 30-day content calendar
+- article matrix mapped to the eight topic landing pages
+- community posting queue and readiness states
+- directory/newsletter submission queue
+- Google Search Console and Bing Webmaster Tools handoff
+- browser-driven entry status and blockers
+- weekly automation loop
 
 ## 14-day launch plan
 

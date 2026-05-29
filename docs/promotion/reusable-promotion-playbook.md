@@ -30,6 +30,9 @@ Each product launch needs:
 - Product Hunt title, subtitle, maker comment, and media checklist
 - email feedback request
 - list of communities and moderators/rules status
+- 30-day content calendar and article matrix
+- directory/newsletter submission queue
+- search engine submission handoff for sitemap and URL inspection
 - weekly metrics template
 
 ## Weekly operating cadence
@@ -128,6 +131,8 @@ Produce:
 - one recommended technical post topic
 - the best topic landing page to link for that post
 - one community action for HN/Reddit/LinkedIn/X/Product Hunt or directories
+- one directory/newsletter/search-console action when community posting is not
+  ready
 - any docs or website changes that should be made before posting
 
 Do not spam communities or ask for votes. Prefer useful technical content and
@@ -174,6 +179,8 @@ Do not post on Reddit until:
 Potential targets to review manually:
 
 - GitHub topics: incident-response, dfir, blue-team, security-tools, rust
+- GitHub topics already used for Open Investigator: rust, incident-response,
+  forensics, dfir, security-tools, blue-team
 - awesome incident response lists
 - awesome security lists
 - open-source security tool directories
