@@ -103,7 +103,7 @@ Suggested communities:
 Best supporting article:
 
 ```text
-docs/promotion/article-ai-incident-tool-safety-boundary.md
+https://www.arvantacyber.com/open-investigator/articles/ai-incident-tool-safety-boundary/
 ```
 
 Best link target:
@@ -241,8 +241,8 @@ Open Investigator keeps that first pass local and read-only:
 - recent files and persistence
 - evidence.jsonl plus report.md/report.json
 
-Article draft:
-docs/promotion/article-suspicious-ip-linux-triage.md
+Article:
+https://www.arvantacyber.com/open-investigator/articles/suspicious-ip-linux-triage/
 
 Related page:
 https://www.arvantacyber.com/open-investigator/local-ai-incident-response/

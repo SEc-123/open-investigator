@@ -178,9 +178,11 @@ Do not post on Reddit until:
 
 Potential targets to review manually:
 
-- GitHub topics: incident-response, dfir, blue-team, security-tools, rust
-- GitHub topics already used for Open Investigator: rust, incident-response,
-  forensics, dfir, security-tools, blue-team
+- GitHub topics: incident-response, dfir, blue-team, security-tools, rust,
+  linux, windows, cybersecurity, forensics, ai-tools
+- GitHub topics already used for Open Investigator: incident-response, dfir,
+  blue-team, security-tools, rust, linux, windows, cybersecurity, forensics,
+  ai-tools
 - awesome incident response lists
 - awesome security lists
 - open-source security tool directories
