@@ -1,6 +1,16 @@
 {
   "product": "Open Investigator",
   "website": "https://www.arvantacyber.com/open-investigator/",
+  "topic_pages": {
+    "local_ai_incident_response": "https://www.arvantacyber.com/open-investigator/local-ai-incident-response/",
+    "read_only_ai_server_investigation": "https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/",
+    "webshell_investigation": "https://www.arvantacyber.com/open-investigator/webshell-investigation-tool/",
+    "java_memory_shell_investigation": "https://www.arvantacyber.com/open-investigator/java-memory-shell-investigation/",
+    "linux_host_investigation": "https://www.arvantacyber.com/open-investigator/linux-host-investigation/",
+    "windows_host_investigation": "https://www.arvantacyber.com/open-investigator/windows-host-investigation/",
+    "siem_soar_boundary": "https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/",
+    "ai_dfir_reporting": "https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/"
+  },
   "source": "https://github.com/SEc-123/open-investigator",
   "feedback_email": "oi@arvantacyber.com",
   "license": "Apache-2.0",

@@ -48,6 +48,23 @@ Not the audience:
 - License: Apache-2.0
 - Product mark: `assets/open-investigator-mark.svg`
 
+## Search landing pages
+
+Use the most specific page when posting or answering a question. Use the GitHub
+link when the user wants source, install commands, issues, or contribution
+details.
+
+| Topic | Public page |
+|---|---|
+| Local AI incident response | https://www.arvantacyber.com/open-investigator/local-ai-incident-response/ |
+| Read-only AI server investigation | https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/ |
+| WebShell and web server anomalies | https://www.arvantacyber.com/open-investigator/webshell-investigation-tool/ |
+| Java service and memory-shell clues | https://www.arvantacyber.com/open-investigator/java-memory-shell-investigation/ |
+| Linux host triage | https://www.arvantacyber.com/open-investigator/linux-host-investigation/ |
+| Windows host triage | https://www.arvantacyber.com/open-investigator/windows-host-investigation/ |
+| SIEM/SOAR/EDR boundary | https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/ |
+| Evidence-backed DFIR reports | https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/ |
+
 ## Message pillars
 
 1. Local and read-only by default.
@@ -76,15 +93,16 @@ write useful pages that answer the searcher's real problem.
 
 | Search intent | Page or article angle |
 |---|---|
-| AI server incident response tool | How to triage a suspicious server with a local AI investigator |
-| Linux incident response CLI | Read-only Linux host investigation from logs, auth, process, net, persistence |
-| Windows server incident investigation | Event log, account, process, service, PowerShell, scheduled task review |
-| AI DFIR tool | AI-guided evidence collection with sealed tools and auditable reports |
-| WebShell investigation tool | Web log, upload, POST, recent file, process, and outbound context |
-| Java memory shell investigation | Layered Java checks, `--java-deep`, heap/JFR artifact gates |
-| suspicious IP server logs | Trace an IP across auth, web, net, process, persistence, and services |
-| read-only incident response | Evidence collection without host isolation, deletion, restart, or blocking |
-| OpenAI function calling security tool | Server investigation loop using OpenAI-compatible tool calls |
+| AI server incident response tool | https://www.arvantacyber.com/open-investigator/local-ai-incident-response/ |
+| Linux incident response CLI | https://www.arvantacyber.com/open-investigator/linux-host-investigation/ |
+| Windows server incident investigation | https://www.arvantacyber.com/open-investigator/windows-host-investigation/ |
+| AI DFIR tool | https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/ |
+| WebShell investigation tool | https://www.arvantacyber.com/open-investigator/webshell-investigation-tool/ |
+| Java memory shell investigation | https://www.arvantacyber.com/open-investigator/java-memory-shell-investigation/ |
+| suspicious IP server logs | https://www.arvantacyber.com/open-investigator/local-ai-incident-response/ |
+| read-only incident response | https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/ |
+| OpenAI function calling security tool | https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/ |
+| SIEM/SOAR comparison | https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/ |
 
 ## Community rules to respect
 

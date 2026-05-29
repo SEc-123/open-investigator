@@ -23,6 +23,25 @@ URL:
 https://github.com/SEc-123/open-investigator
 ```
 
+Website overview:
+
+```text
+https://www.arvantacyber.com/open-investigator/
+```
+
+Topic pages for later replies:
+
+```text
+Local AI incident response:
+https://www.arvantacyber.com/open-investigator/local-ai-incident-response/
+
+Read-only AI investigation boundary:
+https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/
+
+SIEM/SOAR/EDR boundary:
+https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/
+```
+
 First comment:
 
 ```text
@@ -99,6 +118,9 @@ Body:
 ```text
 Disclosure: I maintain Open Investigator at Arvanta Cyber. It is Apache-2.0:
 https://github.com/SEc-123/open-investigator
+
+Overview:
+https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/
 
 I am trying to design a safer pattern for AI-assisted first-pass server
 investigation.
@@ -177,6 +199,16 @@ https://github.com/SEc-123/open-investigator
 Website:
 https://www.arvantacyber.com/open-investigator/
 
+Use-case pages:
+- WebShell investigation:
+  https://www.arvantacyber.com/open-investigator/webshell-investigation-tool/
+- Java service investigation:
+  https://www.arvantacyber.com/open-investigator/java-memory-shell-investigation/
+- Linux host triage:
+  https://www.arvantacyber.com/open-investigator/linux-host-investigation/
+- Windows host triage:
+  https://www.arvantacyber.com/open-investigator/windows-host-investigation/
+
 I would love feedback from incident responders, security engineers, SREs, and
 people who operate production Java/Linux/Windows services.
 ```
@@ -196,6 +228,9 @@ https://github.com/SEc-123/open-investigator
 
 Website:
 https://www.arvantacyber.com/open-investigator/
+
+DFIR reporting page:
+https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/
 ```
 
 ## X thread

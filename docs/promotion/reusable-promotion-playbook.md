@@ -38,6 +38,9 @@ Monday:
 
 - Check website indexing basics: title, description, canonical, robots,
   sitemap, HTTP status.
+- Confirm all topic landing pages are still 200 and listed in sitemap:
+  local AI incident response, read-only AI investigation, WebShell, Java,
+  Linux, Windows, SIEM/SOAR boundary, and AI DFIR reporting.
 - Review GitHub issues, discussions, and support email.
 - Pick one user question to turn into public docs.
 
@@ -106,6 +109,15 @@ Run the reusable Arvanta community promotion loop for Open Investigator.
 
 Check:
 - website status for https://www.arvantacyber.com/open-investigator/
+- topic page status and sitemap coverage for:
+  - https://www.arvantacyber.com/open-investigator/local-ai-incident-response/
+  - https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/
+  - https://www.arvantacyber.com/open-investigator/webshell-investigation-tool/
+  - https://www.arvantacyber.com/open-investigator/java-memory-shell-investigation/
+  - https://www.arvantacyber.com/open-investigator/linux-host-investigation/
+  - https://www.arvantacyber.com/open-investigator/windows-host-investigation/
+  - https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/
+  - https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/
 - robots.txt and sitemap presence
 - GitHub repo activity at https://github.com/SEc-123/open-investigator
 - new issues, stars, forks, releases, and README friction
@@ -114,6 +126,7 @@ Check:
 Produce:
 - a short weekly promotion report
 - one recommended technical post topic
+- the best topic landing page to link for that post
 - one community action for HN/Reddit/LinkedIn/X/Product Hunt or directories
 - any docs or website changes that should be made before posting
 
