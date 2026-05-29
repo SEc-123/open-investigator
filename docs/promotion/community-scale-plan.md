@@ -31,15 +31,19 @@ Primary audiences:
    Publish practical articles that answer a real investigation question before
    linking the product.
 
-4. Community discussions.
+4. Content distribution.
+   Turn each article into a short social post, mini case, video segment, and
+   newsletter/directory pitch.
+
+5. Community discussions.
    Post in communities only when the post stands on its own as useful technical
    material. Disclose affiliation and avoid vote coordination.
 
-5. Directory and newsletter submissions.
+6. Directory and newsletter submissions.
    Submit once to relevant lists, newsletters, and tool directories. Track every
    submission and follow-up.
 
-6. Weekly loop.
+7. Weekly loop.
    Review indexing, repo signals, community feedback, and the next best post.
    Convert useful feedback into docs, issues, or release tasks.
 
@@ -47,14 +51,15 @@ Primary audiences:
 
 | Week | Asset | Primary page | Community angle |
 |---|---|---|---|
-| 1 | How to investigate a suspicious IP on a Linux server with read-only evidence collection | https://www.arvantacyber.com/open-investigator/local-ai-incident-response/ | Practical first-pass triage, not a launch announcement |
+| 1 | How to investigate a suspicious IP on a Linux server with read-only evidence collection | https://www.arvantacyber.com/open-investigator/articles/suspicious-ip-linux-triage/ | Practical first-pass triage, not a launch announcement |
 | 1 | Show HN post when maintainer can answer comments | https://github.com/SEc-123/open-investigator | Ask for feedback on the sealed-tool safety boundary |
 | 2 | WebShell triage walkthrough: web logs, recent files, process context, and outbound connections | https://www.arvantacyber.com/open-investigator/webshell-investigation-tool/ | Useful for blue team, Linux admin, and web ops communities |
 | 2 | LinkedIn/X technical takeaway from the WebShell walkthrough | https://www.arvantacyber.com/open-investigator/webshell-investigation-tool/ | Short operator-facing summary with repo link |
 | 3 | Java memory-shell investigation without default heap dumps | https://www.arvantacyber.com/open-investigator/java-memory-shell-investigation/ | Java/SRE angle: layered diagnostics and production safety |
-| 3 | Reddit discussion where rules allow: what safety boundary should AI incident tools have? | https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/ | Ask a real design question; disclose affiliation |
+| 3 | Reddit discussion where rules allow: what safety boundary should AI incident tools have? | https://www.arvantacyber.com/open-investigator/articles/ai-incident-tool-safety-boundary/ | Ask a real design question; disclose affiliation |
 | 4 | Why read-only AI investigation is not EDR, SIEM, or SOAR | https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/ | Comparison/boundary article for security leaders |
 | 4 | Monthly feedback post: what changed after first community feedback | https://github.com/SEc-123/open-investigator | Converts comments into product momentum |
+| 4 | 90-second demo video and mini case | https://www.arvantacyber.com/open-investigator/ | Product Hunt and social media readiness |
 
 ## Article matrix
 
@@ -71,18 +76,21 @@ Primary audiences:
 
 | Channel | Status | Next action | Asset |
 |---|---|---|---|
-| GitHub topics/About | Live | Keep topics aligned with README and release notes | `rust`, `incident-response`, `forensics`, `dfir`, `security-tools`, `blue-team` |
+| GitHub topics/About | Live | Keep topics aligned with README and release notes | `incident-response`, `dfir`, `blue-team`, `security-tools`, `rust`, `linux`, `windows`, `cybersecurity`, `forensics`, `ai-tools` |
 | Hacker News | Ready if maintainer can cover comments | Submit one Show HN only when available for same-day replies | `docs/promotion/community-posts.md` |
 | Reddit | Needs subreddit rule check per target | Ask moderators where rules are unclear; prefer educational posts | Reddit technical post draft |
 | LinkedIn | Ready | Publish concise founder/operator post with specific use-case links | LinkedIn launch post |
 | X | Ready | Publish thread with commands and safety boundary | X thread |
 | Product Hunt | Not ready | Prepare screenshots, demo video, and a warmed personal maker account | Product Hunt draft |
-| Google Search Console | Needs verified property access | Submit `https://www.arvantacyber.com/sitemap.xml` and inspect topic URLs | Search foundation |
+| Google Search Console | Verified and sitemap submitted | Recheck sitemap processing and inspect remaining topic URLs | Search foundation |
 | Bing Webmaster Tools | Needs verified property access | Submit sitemap and verify indexability | Search foundation |
 | Directories/newsletters | Needs manual review | Submit to one relevant tool list per week | Directory queue |
 
 Current external-entry progress and browser blockers are tracked in
 `docs/promotion/external-entry-status.md`.
+
+Content, paid, video, and partnership assets are tracked in
+`docs/promotion/content-distribution-assets.md`.
 
 ## Directory queue
 
@@ -94,6 +102,9 @@ Review and submit manually, one at a time:
 - Java operations or SRE newsletters for the Java memory-shell article
 - Linux admin newsletters for suspicious IP and WebShell walkthroughs
 - Rust command-line tool showcases after release metadata is polished
+
+Paid discovery should stay experimental and capped. Use the drafts in
+`content-distribution-assets.md` only after analytics and daily caps are set.
 
 Track each submission with date, URL, status, owner, and follow-up in the table
 from `reusable-promotion-playbook.md`.
@@ -116,6 +127,8 @@ Google Search Console:
    - `https://www.arvantacyber.com/open-investigator/windows-host-investigation/`
    - `https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/`
    - `https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/`
+   - `https://www.arvantacyber.com/open-investigator/articles/suspicious-ip-linux-triage/`
+   - `https://www.arvantacyber.com/open-investigator/articles/ai-incident-tool-safety-boundary/`
 
 Bing Webmaster Tools:
 
@@ -132,7 +145,9 @@ Every week, the automation should:
 2. Review GitHub topics, README friction, new issues, stars, forks, releases,
    and CI status.
 3. Choose one article from the matrix or community feedback.
-4. Recommend one channel action and one link target.
+4. Recommend one channel action, one content repurpose action, and one link
+   target.
 5. Record platform blockers: login, account age, missing demo media, unclear
    community rules, property verification, or search-console processing state.
-6. Never ask for votes, mass-post, hide affiliation, or bypass platform gates.
+6. Recheck IndexNow/Bing submission state for newly published article pages.
+7. Never ask for votes, mass-post, hide affiliation, or bypass platform gates.

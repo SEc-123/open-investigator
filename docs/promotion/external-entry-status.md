@@ -10,14 +10,15 @@ same blockers.
 
 | Entry | Status | Evidence or note |
 |---|---|---|
-| GitHub topics/About | Live | Repository topics are `rust`, `incident-response`, `forensics`, `dfir`, `security-tools`, and `blue-team`. |
+| GitHub topics/About | Live | Repository topics are `incident-response`, `dfir`, `blue-team`, `security-tools`, `rust`, `linux`, `windows`, `cybersecurity`, `forensics`, and `ai-tools`. |
 | Google Search Console property | Verified | URL-prefix property `https://www.arvantacyber.com/` was verified with `google2da9e3bda6247f36.html`. |
 | Google sitemap submission | Submitted | `https://www.arvantacyber.com/sitemap.xml` was submitted after verification. |
 | Google URL inspection | Requested | Indexing was requested for `https://www.arvantacyber.com/open-investigator/`. Google reported the URL as discovered but not yet indexed immediately after submission. |
 | Public verification file | Live | `https://www.arvantacyber.com/google2da9e3bda6247f36.html` returns the required verification content. |
 | IndexNow key file | Live | `https://www.arvantacyber.com/13364d5feadbc1c04e4fa1f863949292.txt` returns the required IndexNow key. |
 | IndexNow URL push | Accepted | The Open Investigator overview and eight topic pages were submitted to `https://api.indexnow.org/indexnow`; the API returned HTTP `202 Accepted`. |
-| Arvanta website release | Live | Search verification files and Open Investigator SEO pages are live in website release `20260529155003`; public crawl checked 29 pages with 0 broken links. |
+| Public article pages | Live | `https://www.arvantacyber.com/open-investigator/articles/suspicious-ip-linux-triage/` and `https://www.arvantacyber.com/open-investigator/articles/ai-incident-tool-safety-boundary/` are live and included in sitemap.xml. |
+| Arvanta website release | Live | Search verification files, Open Investigator SEO pages, and article pages are live in website release `20260529162121`; public crawl checked 31 pages with 0 broken links. |
 
 ## In Progress
 
@@ -44,6 +45,14 @@ Recheck Google Search Console after Google processes the sitemap:
 For Bing Webmaster Tools, use the same sitemap and URL list. If Bing offers
 Google Search Console import, prefer that path because the Google property is
 already verified.
+
+IndexNow follow-up:
+
+- Overview and topic pages were accepted with HTTP `202`.
+- Article-page retry on 2026-05-29 hit Bing-side temporary failures:
+  `503 OriginTimeout`, one SSL connect error, and one timeout.
+- Because both article pages are live in sitemap.xml, the next weekly loop
+  should retry IndexNow and then inspect Bing/GSC state.
 
 ## Posting Rules
 

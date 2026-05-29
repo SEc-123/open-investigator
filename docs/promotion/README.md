@@ -49,6 +49,7 @@ Not the audience:
 - Product mark: `assets/open-investigator-mark.svg`
 - Community scale plan: `docs/promotion/community-scale-plan.md`
 - External entry status: `docs/promotion/external-entry-status.md`
+- Content distribution assets: `docs/promotion/content-distribution-assets.md`
 
 ## Search landing pages
 
@@ -74,6 +75,8 @@ details.
   article for search and community reuse.
 - `article-ai-incident-tool-safety-boundary.md`: discussion article about the
   read-only AI investigation boundary.
+- `content-distribution-assets.md`: public article URLs, mini case narrative,
+  90-second video script, paid distribution drafts, and partnership outreach.
 
 ## Message pillars
 
@@ -190,6 +193,7 @@ assets are ready. It contains:
 - directory/newsletter submission queue
 - Google Search Console and Bing Webmaster Tools handoff
 - browser-driven entry status and blockers
+- content, paid, video, and partnership assets
 - weekly automation loop
 
 ## 14-day launch plan

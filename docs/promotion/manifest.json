@@ -11,6 +11,10 @@
     "siem_soar_boundary": "https://www.arvantacyber.com/open-investigator/open-investigator-vs-siem-soar/",
     "ai_dfir_reporting": "https://www.arvantacyber.com/open-investigator/ai-dfir-reporting-tool/"
   },
+  "published_articles": {
+    "suspicious_ip_linux_triage": "https://www.arvantacyber.com/open-investigator/articles/suspicious-ip-linux-triage/",
+    "ai_incident_tool_safety_boundary": "https://www.arvantacyber.com/open-investigator/articles/ai-incident-tool-safety-boundary/"
+  },
   "source": "https://github.com/SEc-123/open-investigator",
   "feedback_email": "oi@arvantacyber.com",
   "license": "Apache-2.0",
@@ -23,7 +27,8 @@
     "community_posts": "docs/promotion/community-posts.md",
     "reusable_playbook": "docs/promotion/reusable-promotion-playbook.md",
     "community_scale_plan": "docs/promotion/community-scale-plan.md",
-    "external_entry_status": "docs/promotion/external-entry-status.md"
+    "external_entry_status": "docs/promotion/external-entry-status.md",
+    "content_distribution_assets": "docs/promotion/content-distribution-assets.md"
   },
   "primary_channels": [
     "Hacker News",
@@ -32,6 +37,8 @@
     "X",
     "Product Hunt",
     "open-source directories",
+    "newsletters and blogs",
+    "paid search and social tests",
     "Google Search Console",
     "Bing Webmaster Tools"
   ],
@@ -40,7 +47,8 @@
     "product_hunt": "needs personal maker account, screenshots, and demo video",
     "reddit": "needs subreddit rule review and moderator check where unclear",
     "linkedin_x": "ready",
-    "search_engines": "google verified, sitemap submitted, overview indexing requested; bing pending",
-    "github_topics": "live: rust, incident-response, forensics, dfir, security-tools, blue-team"
+    "search_engines": "google verified, sitemap submitted, overview indexing requested; overview/topic IndexNow accepted; article IndexNow retry pending after Bing temporary failures",
+    "content_distribution": "public articles live; video, paid, and partnership assets drafted",
+    "github_topics": "live: incident-response, dfir, blue-team, security-tools, rust, linux, windows, cybersecurity, forensics, ai-tools"
   }
 }
