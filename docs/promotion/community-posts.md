@@ -100,6 +100,18 @@ Suggested communities:
 - r/java
 - r/netsecstudents
 
+Best supporting article:
+
+```text
+docs/promotion/article-ai-incident-tool-safety-boundary.md
+```
+
+Best link target:
+
+```text
+https://www.arvantacyber.com/open-investigator/read-only-ai-server-investigation/
+```
+
 Before posting:
 
 - Read rules.
@@ -211,6 +223,29 @@ Use-case pages:
 
 I would love feedback from incident responders, security engineers, SREs, and
 people who operate production Java/Linux/Windows services.
+```
+
+Use the suspicious-IP article for a more tactical follow-up:
+
+```text
+I wrote a practical walkthrough for starting from one weak clue: a suspicious IP
+on a Linux server.
+
+The useful first step is not to guess whether the host is compromised. It is to
+ask where the IP appears, what changed around that time, and what evidence is
+still missing.
+
+Open Investigator keeps that first pass local and read-only:
+- auth and web logs
+- process and network context
+- recent files and persistence
+- evidence.jsonl plus report.md/report.json
+
+Article draft:
+docs/promotion/article-suspicious-ip-linux-triage.md
+
+Related page:
+https://www.arvantacyber.com/open-investigator/local-ai-incident-response/
 ```
 
 Shorter LinkedIn variant:

@@ -18,8 +18,12 @@
     "mark": "assets/open-investigator-mark.svg",
     "launch_kit": "docs/promotion/README.md",
     "long_article": "docs/promotion/article-ai-server-incident-response.md",
+    "suspicious_ip_article": "docs/promotion/article-suspicious-ip-linux-triage.md",
+    "safety_boundary_article": "docs/promotion/article-ai-incident-tool-safety-boundary.md",
     "community_posts": "docs/promotion/community-posts.md",
-    "reusable_playbook": "docs/promotion/reusable-promotion-playbook.md"
+    "reusable_playbook": "docs/promotion/reusable-promotion-playbook.md",
+    "community_scale_plan": "docs/promotion/community-scale-plan.md",
+    "external_entry_status": "docs/promotion/external-entry-status.md"
   },
   "primary_channels": [
     "Hacker News",
@@ -27,12 +31,16 @@
     "LinkedIn",
     "X",
     "Product Hunt",
-    "open-source directories"
+    "open-source directories",
+    "Google Search Console",
+    "Bing Webmaster Tools"
   ],
   "readiness": {
     "show_hn": "ready after maintainer confirms same-day comment coverage",
     "product_hunt": "needs personal maker account, screenshots, and demo video",
     "reddit": "needs subreddit rule review and moderator check where unclear",
-    "linkedin_x": "ready"
+    "linkedin_x": "ready",
+    "search_engines": "google verified, sitemap submitted, overview indexing requested; bing pending",
+    "github_topics": "live: rust, incident-response, forensics, dfir, security-tools, blue-team"
   }
 }
